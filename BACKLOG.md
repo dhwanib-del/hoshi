@@ -36,6 +36,9 @@ PRD §9.2 awards 8 points for a named person the user has not contacted — typi
 **B-13 · Activity has to render counts and rates differently**
 PRD §10.3 rule 7 says a count is a fact and a rate is an estimate, and that if the Activity tab renders them identically the interval rule is decoration. That is a design task inside the fixed Material 3 / 360px system, not a spec task: it needs a treatment for "exact" versus "estimated, here is the range" that survives at side-panel width and does not read as two unrelated widgets. Also owns the insufficient-data state from rule 6, which is a real component and not an empty state — it carries a computed number.
 
+**B-14 · Pushes work, so decide what the loop is allowed to build**
+LOOP.md carried a hard constraint saying `github.com/dhwanib-del/hoshi` was empty and pushes were refused for this org. Tested 2026-10-02: false. The four spec docs are now committed and pushed to `master` ([88dbb01](https://github.com/dhwanib-del/hoshi/commit/88dbb01aca67ef84f6ae77bfc450a1d3d664f950)). That removes the mechanical reason this is a spec-only loop, but not the substantive one — **the extension codebase still is not in this repo**, so there is nothing to write against. Dhwani's decision, two parts: (a) push the real Hoshi source here, and (b) say whether the loop should write code against it or keep specifying and leave implementation to her. Until she answers, runs commit spec docs only. Not an engineering question and the loop should not answer it by starting.
+
 ---
 
 ## Open — low

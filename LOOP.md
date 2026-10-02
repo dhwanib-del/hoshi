@@ -1,0 +1,103 @@
+# Hoshi Loop — operating doc
+
+Read this first, every run. It decides what today's run does.
+
+Hoshi is Dhwani's Chrome extension (Manifest V3) for job search: it recognises job pages, extracts postings, fills applications without ever submitting them, and tracks the people worth talking to. She is a UX Research & Design master's student at UMSI targeting product design and UX research roles, and she needs visa sponsorship.
+
+**The job of this loop is to make the PRD sharper every day, and to make Hoshi the best job-finding tool by the definition in PRD §5.**
+
+---
+
+## Run order
+
+1. **Read `claude/hoshi/PRD.md`.** This is the product. Everything answers to its §1 thesis.
+2. **Read `claude/hoshi/BACKLOG.md`.** Never re-propose anything under Done or Rejected.
+3. **Read the two most recent briefs** in `claude/hoshi/briefs/` if any exist. Do not repeat yesterday's work.
+4. **Check for Dhwani's answers.** If she has answered any Open Question in PRD §6, or left a note in a brief, treat her answer as a decision: fold it into the PRD, remove it from §6, and say so in today's brief.
+5. **Do today's work** (below).
+6. **Write today's brief** to `claude/hoshi/briefs/YYYY-MM-DD.md`.
+7. **Update the PRD and BACKLOG** with what changed.
+8. **Finish with a SendUserMessage**: what changed today in one line each, and the single most useful thing she could answer.
+
+---
+
+## Today's work — pick ONE
+
+One substantive change per run. Not three, not ten. A loop that touches everything daily produces a document nobody can read by week three.
+
+Choose in this order:
+
+1. **If an Open Question got answered** → fold it in. That is the whole run.
+2. **If a high-priority backlog item is ready** → do that one. Take it from Open to Done with the actual specification written into the PRD, not a note saying it should be.
+3. **Otherwise** → the weekly rotation:
+
+| Day | Focus |
+| --- | --- |
+| Mon | Discovery and sourcing (B-03 and descendants) |
+| Tue | Fit scoring and ranking |
+| Wed | Networking and outreach — the thesis lives here |
+| Thu | Application flow, autofill, answer bank |
+| Fri | Analytics, honesty rules, measurement |
+| Sat | Competitive research — find one thing a competitor does well or badly, with a source |
+| Sun | Cut. Find the weakest section and make it shorter or delete it. |
+
+Sunday is not optional. It is the only thing keeping this document usable.
+
+---
+
+## What "improve the PRD" means
+
+**It means sharper, not longer.**
+
+- A run that deletes a vague paragraph and replaces it with a testable sentence is a good run.
+- A run that adds a section nobody asked for is a bad run, even if the section is well written.
+- Every factual claim needs a source link or an explicit `[assumption]` tag. Untagged assumptions are the failure mode that makes a spec feel authoritative when it is guessing.
+- If two sections say the same thing, merge them.
+- If a requirement cannot be tested, either make it testable or cut it.
+
+**Target length: under 400 lines.** If the PRD is over that, Sunday's cut is mandatory regardless of what else is queued.
+
+---
+
+## Hard constraints
+
+- **Do not guess the Open Questions in PRD §6.** They are hers. Guessing produces a spec built on a foundation she never agreed to. Ask in the brief instead.
+- **Do not weaken the six principles in PRD §3.** They are enforced by tests in the codebase. If a proposal requires breaking one, the proposal is wrong.
+- **Do not redesign the UI.** The design system is Material 3 with Quicksand and Nunito Sans, fixed at a 360px side panel, with a four-destination bottom nav (Orbit, Jobs, People, Activity). Work within it.
+- **Do not invent build status.** The codebase is not attached to these runs. Report what previous briefs and the PRD say is built; do not claim a test passed that you did not run.
+- **No code commits.** `github.com/dhwanib-del/hoshi` is empty and pushes are refused for this org — Claude's GitHub App is not installed for it. Until she fixes that, this loop is a spec-and-research loop. If a run produces code worth keeping, put it in the brief as a fenced block and say it needs to be applied by hand.
+- **The loop's sandbox cannot reach non-allowlisted hosts.** Web search and fetch work; `curl` to an arbitrary API does not. If a claim needs a live request to verify, tag it `[assumption]`, say in the PRD that it is unverified, and put the verification step in the backlog for Dhwani. Do not quietly assert it.
+
+---
+
+## Brief format
+
+Keep it short. She reads these on a phone.
+
+```markdown
+# YYYY-MM-DD
+
+**Focus:** <one line>
+
+## What changed
+- <one line per change, naming the PRD section or backlog item>
+
+## What I found
+<only if research happened — the finding and its source link>
+
+## Needs from Dhwani
+- <the single most useful thing she could answer, or "nothing — keep going">
+```
+
+Do not pad a quiet day. "Cut §4 from eleven lines to four, no other changes" is a complete brief.
+
+---
+
+## Changelog
+
+Append one line per run. Never rewrite history.
+
+- **2026-09-27** — Loop created. PRD written from the v3.0 Hoshi PRD, the Job Search Agent spec, the architecture audit, and competitive research. Thesis established: optimize for conversations, not submissions, on 40–65% vs 2–8% interview-rate evidence. Backlog seeded with 10 items. Four Open Questions raised, none guessed.
+- **2026-09-28** — B-03 done: discovery engine specified as PRD §8 (adapter interface, fail-closed result shape, field map onto `ExtractedJob`, dedup via `identityKeys` with the page path winning, permission surface). Providers tiered from their docs — Greenhouse, Lever, Ashby documented and unauthenticated; Workday reverse-engineered and shipping `complete: false`. Discovery seeded by companies the user has a person at, not keywords, since no documented provider offers cross-company search anyway. CORS assumption tagged unverified (sandbox egress refused all four hosts) and raised as B-11.
+- **2026-09-29** — B-01 done: fit scoring specified as PRD §9. Connection takes 20 of 100, displacing 5 each from role, experience, company and narrative. Tiers score what the person can do today (C3/C2/C1/C0) rather than inferred closeness, because no public data resolves outcomes by connection strength — weights and spacing tagged `[assumption]`, and the one study that looks like a rate is cited with its authors' own warning that it is not. Two CI-blocking invariants bound the term: it re-ranks the qualified set but cannot admit a job below the role-fit floor, and C3 beats company+narrative+location+freshness combined but stays under role+experience. Explanation must name the person or the points are not awarded. B-12 opened (C1 has no evidence source yet). PRD at 287 lines.
+- **2026-10-02** — B-04 done: analytics and honesty rules specified as PRD §10. The run's finding is a refusal: at a 5% cold response rate, detecting a move to 15% needs 141 applications per arm, so a single user can never A/B test the application funnel — which is why the metric set leans to the warm path, where §1's base rate is ten times higher, and why the headline metric is person-attached rate (a proportion of her own behaviour, not the market's). Metrics split into counts (exact) and rates (estimates, always with a 95% Wilson interval). Seven honesty rules replace "do not claim causality without enough data", including no percentage under n=10 and insufficient-data states that name the shortfall as a number. §5 point 5 rewritten: it promised Hoshi could show which change moved the response rate, which the arithmetic says it cannot. §10.4 concedes that B-04 cannot falsify §9.1's connection weight at single-user scale and records the two weaker substitutes, so no later run claims the `[assumption]` was retired. B-13 opened (Activity must render counts and rates differently). No run on 09-30 or 10-01. PRD at 368 lines.

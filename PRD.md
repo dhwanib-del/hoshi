@@ -1,6 +1,6 @@
 # Hoshi — Product Requirements
 
-**Living document.** Improved daily by the Hoshi Loop. Last substantive revision: 2026-10-02.
+**Living document.** Improved daily by the Hoshi Loop. Last substantive revision: 2026-10-04.
 
 ---
 
@@ -26,7 +26,7 @@ This is the one sentence the rest of the document answers to. A feature that inc
 ### What this means concretely
 
 - The Stardust economy already encodes this: outreach pays 40, a submission pays 15 and decays after five per day. That was the right instinct and it should extend to the whole product surface.
-- The Daily Brief should lead with *who to talk to*, not only *what to apply to*.
+- The Daily Brief leads with *who to talk to*, not only *what to apply to*. Specified in §7.
 - A job with a warm connection outranks a job with a higher raw fit score, up to a bounded limit. Specified in §9.
 - The warm path is also the only part of the funnel a single user generates enough data to measure. §10.1.
 
@@ -34,17 +34,7 @@ This is the one sentence the rest of the document answers to. A feature that inc
 
 ## 2. Where the category fails
 
-Sourced from user reviews and comparisons across the five leading tools. These are the specific failures Hoshi is positioned against.
-
-| Failure | Who | Hoshi's answer |
-| --- | --- | --- |
-| No job discovery at all — user finds every listing | Huntr | Discovery engine — specified in §8, not built |
-| Generic AI output requiring heavy editing | Simplify, Jobright | Never fabricate; draft from real shared context or flag the draft as generic |
-| AI locked behind paywall at the moment of need | Teal | Not a monetization question yet; note for later |
-| Spray-and-pray risks platform bans, weak response | LazyApply | Never auto-submit. Enforced in code, not policy |
-| Billing dark patterns (72% of Jobright 1-star reviews) | Jobright | Not applicable yet; do not repeat |
-
-The two that matter most for the build: **discovery** is the gap Hoshi has not filled, and **generic output** is the failure Hoshi's no-fabrication rules already prevent.
+Two failures from the 2026-09-27 competitive read are live constraints on this build; the rest of that read is in §1. **Discovery** is the gap Hoshi has not filled — Huntr makes the user find every listing, and §8 is the answer. **Generic output** is the failure Principle 2 already prevents — Simplify and Jobright are both reviewed as needing heavy editing, extended by B-06. Both are review aggregation rather than a citable study ([RemoteHunt](https://remotehunt.app/blog/best-ai-job-search-tools-2026) is the closest), so at the per-tool level they are `[assumption]` and carry direction, not measurement. Monetization and billing practice — Teal's paywall, Jobright's billing complaints — are cut from this document until Q3 says what Hoshi ships as.
 
 ---
 
@@ -81,7 +71,7 @@ Verified by test run, not asserted. 241 tests passing as of 2026-09-27.
 - Job discovery engine — specified in §8 on 2026-09-28, no code written
 - Fit scoring with explanation — specified in §9 on 2026-09-29, no code written
 - Analytics and honesty rules — specified in §10 on 2026-10-02, no code written
-- Daily Brief
+- Daily Brief — specified in §7 on 2026-10-03, no code written
 - Resume library and tailoring with diff
 - Answer bank
 - Interview mode
@@ -120,9 +110,40 @@ Carried by the loop until answered. The loop must not guess these.
 
 ---
 
-## 7. Backlog
+## 7. The Daily Brief
 
-Maintained in `claude/hoshi/BACKLOG.md`. The loop pulls from there and writes back.
+Specified 2026-10-03 (B-02). No code written. Renders in Orbit. It sits here, ahead of the engines, because it is the only surface the user opens every day: §8, §9 and §10 exist to fill it. (Backlog: `claude/hoshi/BACKLOG.md`.)
+
+### 7.1 Three blocks, fixed order, hard caps
+
+1. **Today's conversations** — people to message or follow up with. Max 3.
+2. **Jobs worth your morning** — promoted jobs, each carrying its §9.4 score line. Max 5.
+3. **Also open at companies you're watching** — one collapsed line with a count.
+
+People first is §1 applied to the surface the user actually opens. The caps are the other half: in a Monster survey of 1,006 US job seekers, 48% applied without reading the whole description, 32% spent a minute or less on a posting and 16% under thirty seconds ([HCAMag summary](https://www.hcamag.com/ca/specialization/recruitment/application-overload-half-of-job-seekers-doomjobbing/578466)). An unbounded ranked feed is the input that behaviour runs on, and §5.1's ten minutes only mean something if they are spent reading. `[assumption]` the caps of 3 and 5 specifically.
+
+### 7.2 What gets promoted, and what the brief never shows
+
+A job enters block 2 only if role fit ≥ 15 of 25 (§9.3 invariant 1) **and** either total fit clears the priority threshold **or** connection tier is C1 or better. Everything else falls to block 3, ordered by company. Block 2 sorts by §9 score descending; ties break to the higher connection tier, then freshness (B-07). **Block 3 never shows a score or a fit label** — a number beside an unpromoted job invites exactly the one-minute apply the caps exist to prevent.
+
+### 7.3 Block 1 rows come from Hoshi's stores, never from a model
+
+Each row names a person, the shared context, and why today. Four types, in priority order: **reply waiting** (they answered, the user has not); **follow-up due** (sent ≥ 7 days ago, no reply, not yet followed up once — `[assumption]` the 7 days); **new role where a C2 or better already exists** (the job is the excuse, the conversation is the point); **decaying** (a C2 at day 18 of §9.2's 21-day clock — message now or the score stops claiming warmth). A row that cannot name a person *and* cite a stored reason is not shown, which puts Principles 2 and 6 on the brief itself and not only on generated text.
+
+### 7.4 Counts only, and an empty state with a number in it
+
+Rates stay in Activity. Two reasons, both from §10.3: a rate must carry its 95% interval at the same type size, which does not survive beside a CTA at 360px, and a daily surface invites the period-over-period comparison rule 3 forbids unless the intervals are disjoint. "Your reply rate is up" is a spec violation on this surface, not a copy choice. When both top blocks are empty the brief gives the shortfall as a number (rule 6) — `nothing today — 0 new postings across your 6 watched boards since yesterday, and no contact due before Tue` — never a filler suggestion, never a padded list.
+
+```
+Orbit · Sat 3 Oct
+TODAY'S CONVERSATIONS
+Priya Raman — UMSI '23 · replied 12 Sep, you haven't answered
+Marcus Lee — UMSI '21 · sent 4 Sep, 24 days, no reply — follow up once
+JOBS WORTH YOUR MORNING
+Product Designer, Figma · 78 · +20 Priya Raman — replied 12 Sep
+UX Researcher II, Duolingo · 71 · +14 Marcus Lee — no reply yet
+▸ Also open at companies you're watching — 11
+```
 
 ---
 
@@ -135,8 +156,6 @@ Specified 2026-09-28 (B-03). No code written.
 Hoshi does not crawl the job market. It watches a list of boards the user has a reason to care about. A board source enters that list when a ranked alum or existing contact works there, or when the user adds it by hand.
 
 This is the thesis applied to sourcing. A keyword crawl produces more applications; a company watchlist produces more conversations, because every source on the list already has a person attached to it. It is also the only version that is actually available: every documented provider in §8.2 is a *per-company* endpoint. None of them offers cross-company search, so a keyword crawl was never on the table regardless.
-
-A discovered job does not land in Jobs as an undifferentiated row. It is promoted into the Daily Brief only if it clears the fit threshold **or** has a contact path. Everything else stays in a collapsed "also open at companies you're watching" list that costs one line of screen space.
 
 ### 8.2 Providers
 
@@ -277,7 +296,7 @@ Never `+20 · strong connection`. **If Hoshi cannot name the person, it cannot a
 
 ## 10. Analytics and honesty rules
 
-Specified 2026-10-02 (B-04). No code written. Renders in the Activity destination; the Daily Brief surface belongs to B-02.
+Specified 2026-10-02 (B-04). No code written. Renders in the Activity destination; the Daily Brief surface is §7.
 
 ### 10.1 The sample size decides the metric set
 
@@ -362,6 +381,7 @@ So §9.1's weights keep their `[assumption]` tag, and no future run should claim
 - [Does Emailing the Hiring Manager Work? 79 Outcomes Analyzed — dearhiringmanager.io](https://dearhiringmanager.io/hiring-manager-outreach-study)
 - [Best AI Job Search Tools in 2026: Honestly Compared — RemoteHunt](https://remotehunt.app/blog/best-ai-job-search-tools-2026)
 - [Cold applying is still the No. 1 way to get a new job — CNBC](https://www.cnbc.com/2026/01/12/cold-applying-is-still-the-no-1-way-to-get-a-new-job-but-this-method-is-quickly-getting-more-common.html)
+- [Application overload: half of job seekers 'doomjobbing' (Monster, n=1,006) — HCAMag](https://www.hcamag.com/ca/specialization/recruitment/application-overload-half-of-job-seekers-doomjobbing/578466)
 - [Greenhouse Job Board API](https://docs.greenhouse.io/job-board.html)
 - [Lever Postings API](https://github.com/lever/postings-api/blob/master/README.md)
 - [Ashby Public Job Posting API](https://developers.ashbyhq.com/docs/public-job-posting-api)

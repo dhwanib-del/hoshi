@@ -1,6 +1,6 @@
 # Hoshi — Product Requirements
 
-**Living document.** Improved daily by the Hoshi Loop. Last substantive revision: 2026-10-04.
+**Living document.** Improved daily by the Hoshi Loop. Last substantive revision: 2026-10-11.
 
 ---
 
@@ -15,7 +15,9 @@ Simplify, Teal, Huntr, Jobright and LazyApply all compete on applications sent, 
 | Referred candidate | 40–65% |
 | Cold application | 2–8% |
 
-Referred candidates who reach an interview are also 2–4x more likely to receive an offer ([refer.me summary of NBER data](https://www.refer.me/blog/do-job-referrals-actually-work-data-behind-response-rates)). That is a 5–10x difference in the thing that actually matters, and no major competitor is built around it. LazyApply's volume approach is documented as producing *weak* response rates despite high submission counts ([RemoteHunt comparison](https://remotehunt.app/blog/best-ai-job-search-tools-2026)).
+Referred candidates who reach an interview are also 2–4x more likely to receive an offer ([refer.me summary of NBER data](https://www.refer.me/blog/do-job-referrals-actually-work-data-behind-response-rates)). That is a 5–10x difference in the thing that actually matters. LazyApply's volume approach is documented as producing *weak* response rates despite high submission counts ([RemoteHunt comparison](https://remotehunt.app/blog/best-ai-job-search-tools-2026)).
+
+**One competitor has noticed, and where it put the feature is the whole difference.** Jobright ships "Insider Connections": for a job it has already matched, it surfaces contacts at that company and drafts a referral email ([wobo review](https://www.wobo.ai/blog/jobright-review/)). It is **step five of its flow**, after matching, tailoring and autofill ([HiringReach](https://hiringreach.com/reviews/jobright-ai-review), which sells a competing product and discloses it — so its criticisms of the feature are `[assumption]`, but the position is corroborated by the wobo review above, which also describes the contacts as surfaced per already-matched job). So the claim this document can defend is not that nobody does referrals. It is that **nobody makes the person an input.** A connection step that runs after the job is chosen can only decorate a ranking that already happened — it cannot change which jobs were found, or which one is at the top this morning.
 
 **Hoshi's position: optimize for conversations, not submissions.**
 
@@ -68,13 +70,8 @@ Verified by test run, not asserted. 241 tests passing as of 2026-09-27.
 
 **Not built:**
 
-- Job discovery engine — specified in §8 on 2026-09-28, no code written
-- Fit scoring with explanation — specified in §9 on 2026-09-29, no code written
-- Analytics and honesty rules — specified in §10 on 2026-10-02, no code written
-- Daily Brief — specified in §7 on 2026-10-03, no code written
-- Resume library and tailoring with diff
-- Answer bank
-- Interview mode
+- Specified, no code written: Daily Brief (§7), discovery engine (§8), fit scoring (§9), analytics and honesty rules (§10). Each section header carries its own date.
+- Not yet specified: resume library and tailoring with diff, answer bank, interview mode.
 
 **Blocked:**
 
@@ -235,21 +232,9 @@ Specified 2026-09-29 (B-01). No code written.
 
 ### 9.1 The connection term
 
-The previous model had no term for whether the user knows anyone at the company: role 30 / eligibility 20 / experience 15 / company 10 / narrative 10 / location 5 / authorization 5 / freshness 5. That contradicts §1, which says the referral path is worth 5–10x the cold one. A ranking that cannot see the referral path ranks for the wrong funnel.
+The earlier model had no term for whether the user knows anyone at the company, which contradicts §1: a ranking that cannot see the referral path ranks for the wrong funnel. **Connection enters at 20 of 100**, taken from the four terms that predict fit but not conversation — role match, because above the role-fit floor the distribution is dense and the top points do little separating; experience match, which is heavily correlated with role match, so the pair was double-counting one signal; and company and narrative, which overlap role match and were partly proxying for "the user has a person there" — the thing connection now says outright.
 
-**Connection enters at 20 of 100**, displacing twenty points from the terms that predict fit but not conversation:
-
-| Term | Was | Now | Why it moved |
-| --- | --- | --- | --- |
-| Role match | 30 | 25 | Above the role-fit floor the distribution is dense; the top ten points do little separating |
-| Eligibility | 20 | 20 | Hard gate, unchanged |
-| **Connection** | — | **20** | §1 |
-| Experience match | 15 | 10 | Heavily correlated with role match; the pair was double-counting one signal |
-| Company | 10 | 5 | Largely subsumed — the user has a person there, which is what "good company for me" was proxying for |
-| Narrative | 10 | 5 | Overlaps role match; kept as a small tiebreaker |
-| Location | 5 | 5 | Unchanged |
-| Authorization | 5 | 5 | Unchanged — whether this becomes a scoring term instead of a gate is Q4 / B-05 |
-| Freshness | 5 | 5 | Unchanged and still unconsumed (B-07) |
+Role 25 · eligibility 20 · **connection 20** · experience 10 · company 5 · narrative 5 · location 5 · authorization 5 · freshness 5. Sums to 100. Eligibility is a hard gate; authorization is one too, pending Q4 / B-05; freshness is scored and still unconsumed (B-07).
 
 `[assumption]` The specific weights. No public dataset breaks hiring outcomes down by connection strength, so 20 is a judgment sized against the evidence in §1, not derived from it. §10.4 is the finding that one user's analytics cannot retire this tag — only a cohort can.
 
@@ -266,16 +251,14 @@ Connection is tiered by the action available to the user today, not by an inferr
 
 `[assumption]` The tier boundaries and their spacing. The sourced claim is the referral-vs-cold gap in §1; the interior gradient is not sourced, because the data does not exist at that resolution. An observational study of 79 published outreach accounts is the closest public thing, and its authors state plainly that its numbers are not rates — the corpus is self-selected toward unusually good and unusually bad outcomes ([dearhiringmanager.io](https://dearhiringmanager.io/hiring-manager-outreach-study)). It is not a basis for a weight, and is cited here so nobody later mistakes it for one.
 
-**Decay.** A C2 with no reply after 21 days degrades to C1: an unanswered message is information about the path, and the score should stop claiming a warmth that did not materialise. C3 never decays — the reply already happened. `[assumption]` the 21 days.
-
-**Never awarded.** No points for a shared school with no named person. No points for an aggregate ("38 UMSI alums work here") — an aggregate names nobody, so it cannot be inspected, and under Principle 6 a score term that cannot be inspected cannot exist. Aggregate alum counts remain a discovery seed signal (§8.1) and stay out of scoring.
+**Decay.** A C2 with no reply after 21 days degrades to C1: an unanswered message is information about the path, and the score should stop claiming a warmth that did not materialise. C3 never decays — the reply already happened. `[assumption]` the 21 days. Because the tier therefore changes without the user doing anything, it cannot be read back from current state when measuring (§10.3 rule 8, §10.5).
 
 ### 9.3 Two invariants
 
 These are the testable part. Both should be CI-blocking, in the shape of the existing Stardust balance test.
 
 1. **Connection re-ranks the qualified set; it does not admit to it.** A job below the role-fit floor (role < 15 of 25) never enters the Daily Brief, whatever its connection tier. Knowing someone at a company whose roles the user cannot do is not an opportunity, and a scoring model that lets C3 drag unqualified jobs upward would produce exactly the pipeline §5.4 forbids.
-2. **Connection is decisive among comparable jobs and nowhere else.** C3 (20) exceeds the entire company + narrative + location + freshness block (20) combined, so among jobs of similar role fit the one with a person always wins. It is smaller than role + experience (35), so a clearly better-fitting job still outranks a clearly worse one with a friend attached.
+2. **Connection is decisive among comparable jobs and nowhere else.** `C3 (20) == company + narrative + location + freshness (20)` and `C3 (20) < role + experience (35)`. So among jobs of similar role fit, a job with a replied-to contact cannot be *outscored* on the four soft terms — at worst it ties, and §7.2's first tiebreak is the higher connection tier, so it still leads — while a clearly better-fitting job still beats a clearly worse one with a friend attached. The equality is deliberate and the test is `==`, not `>`: this clause read *exceeds* until 2026-10-11, which is false arithmetic and a test written from it would have failed.
 
 Together these two bound the term: strong enough to change the daily ordering, too small to corrupt it.
 
@@ -286,17 +269,19 @@ Under Principle 6 the connection term must name its evidence, in the line the us
 ```
 +20 · Priya Raman — UMSI '23, Design Systems, replied 12 Sep
 +14 · Marcus Lee — UMSI '21, no reply yet (sent 4 Sep)
- +8 · recruiter on the posting — not yet contacted
+ +8 · Dana Patel, UMSI '20 — from your ranked alum list, not yet saved
  +0 · nobody found at this company
 ```
 
 Never `+20 · strong connection`. **If Hoshi cannot name the person, it cannot award the points** — which makes the no-fabrication rule (Principle 2) enforceable on the score itself, not only on generated text. The same display is what makes §5.3 true: "why this job?" is answered by the score line, without reopening the posting.
 
+**C1 alone must also name where the person came from**, as in the third line above, because C1 is the one tier Hoshi sources instead of the user: the same `provenance` contract as §8.4's fields, applied to a person rather than a string. The shipped competitor version of this tier states no data source and no verification standard (§1), which is the failure Principle 6 exists to prevent, so an unprovenanced C1 awards 0 and not 8. That turns B-12 from "find a source for C1" into "find one Hoshi can name in that line" — and it rules out the easy answer, since §8.2 gives LinkedIn no adapter.
+
 ---
 
 ## 10. Analytics and honesty rules
 
-Specified 2026-10-02 (B-04). No code written. Renders in the Activity destination; the Daily Brief surface is §7.
+Specified 2026-10-02 (B-04), extended 2026-10-09 with rule 8 and §10.5. No code written. Renders in the Activity destination; the Daily Brief surface is §7.
 
 ### 10.1 The sample size decides the metric set
 
@@ -312,9 +297,7 @@ Computed, not sourced — the standard normal-approximation two-proportion formu
 
 A job seeker does not send 282 applications in a season, and if she did, the season would end before the comparison resolved. **Hoshi cannot A/B test its own application funnel for a single user. Not slowly — not at all.** Any dashboard that implies otherwise is misreporting its sample size, and that is the specific failure this section exists to prevent.
 
-What one user *can* measure is a rate with a high base. §1 puts the warm path at 40–65% against 2–8% cold; a base rate an order of magnitude higher needs roughly an order of magnitude fewer events for the same relative change. That is the difference between impossible and by December.
-
-So the metric set leans toward conversations for a second, independent reason: not only because §1 says conversations matter, but because conversations are the only stretch of the funnel where one person's numbers ever mean anything.
+What one user *can* measure is a rate with a high base. §1 puts the warm path at 40–65% against 2–8% cold; a base rate an order of magnitude higher needs roughly an order of magnitude fewer events for the same relative change. That is the difference between impossible and by December — and it is a second, independent reason the metric set leans toward conversations, on top of §1: conversations are the only stretch of the funnel where one person's numbers ever mean anything.
 
 ### 10.2 Metric set
 
@@ -326,7 +309,7 @@ Two kinds, and the difference must be visible in the UI.
 | --- | --- |
 | Outreach sent, replies received, per week | the thesis' numerator |
 | Applications submitted | the number every competitor leads with; here it is context, not a score |
-| Applications submitted **with a named person attached** | §5.2 is pass/fail per application, and this is the count |
+| Applications submitted **with a named person attached before submit** (§10.5) | §5.2 is pass/fail per application, and this is the count |
 | Screens and interviews reached | the end of the funnel |
 | Median time from job page opened to submit | §5.1's ten-minute target |
 
@@ -336,7 +319,7 @@ Two kinds, and the difference must be visible in the UI.
 | --- | --- |
 | Reply rate | outreach sent |
 | Person-attached rate | applications submitted |
-| Response rate by connection tier at submit (C3/C2/C1/C0) | applications in that tier |
+| Response rate by connection tier **as recorded at submit** (§10.5) | applications in that tier |
 
 **Person-attached rate goes at the top.** It is a proportion of the user's own behaviour rather than the market's response, so it moves the same week, it is entirely under her control, and it measures whether she is running the thesis or merely agreeing with it.
 
@@ -344,22 +327,14 @@ Two kinds, and the difference must be visible in the UI.
 
 Concrete, replacing the earlier spec's "do not claim causality without enough data".
 
-1. **No percentage below n = 10.** Show `3 of 7`, never `43%`.
-2. **Every rate carries its 95% Wilson interval, same line, same type size.** A bare rate is a false claim of precision. Six replies from twenty sends is `30% (15–52%)`, and that width *is* the finding.
+1. **No percentage below n = 10.** Show `3 of 7`, never `43%`. The floor is not where precision starts, either: 3 of 10 is `30% (11–60%)`.
+2. **Every rate carries its 95% Wilson interval, same line, same type size.** A bare rate is a false claim of precision. Six replies from twenty sends is `30% (15–52%)`, and that width *is* the finding. Twelve of forty is still `30% (18–45%)`.
 3. **No causal or comparative language unless the two intervals are disjoint.** Otherwise the copy reads `30% → 45%, inside the range chance produces at this volume`. No "because", no "up", no arrow.
 4. **No trend line or sparkline over fewer than four periods that each clear n = 10.**
 5. **No external benchmark Hoshi cannot source.** No "top 20% of applicants", no percentile against users Hoshi has never seen.
 6. **Insufficient data states the shortfall as a number** (Principle 5): `not enough yet — 14 more sends before this rate means anything`. Never a blank, a zero, or a greyed-out 0%.
 7. **Counts and rates never share a visual treatment.** A count is a fact and a rate is an estimate; if Activity renders them identically, rule 2 is decoration.
-
-What rule 2 produces at the volumes one user actually reaches:
-
-| Observed | Rate | 95% interval |
-| --- | --- | --- |
-| 3 of 10 | 30% | 11–60% |
-| 6 of 20 | 30% | 15–52% |
-| 12 of 40 | 30% | 18–45% |
-| 2 of 40 | 5% | 1–17% |
+8. **No count or rate may read a value that can change after the event it describes.** Connection tier decays and upgrades (§9.2), person-attached status can be earned late, and the weights themselves are `[assumption]` and will move — so a metric derived from current state describes today's contacts, not the submission it claims to. §10.5 is the record this rule requires. Without it, the tier table above and the headline rate above it are not computable honestly and must not be shown at all.
 
 ### 10.4 What this does, and does not do, for §9
 
@@ -372,6 +347,27 @@ The weight gets two weaker tests instead, each honest about which it is:
 
 So §9.1's weights keep their `[assumption]` tag, and no future run should claim analytics retired it. Recorded here to stop exactly that.
 
+### 10.5 What has to be recorded at the event
+
+Rule 8 is a schema requirement, not a display rule, and the reason is that the error it prevents has a direction: it flatters §9.1. If Activity builds §10.2's tier table by joining each application to its contact's *current* tier, then a C2 whose alum replies after the application — including a reply the application itself caused — becomes a C3, so that submission is counted in the C3 bucket precisely because it worked. Meanwhile a C2 that went nowhere decays to C1 at day 21 (§9.2). C2's successes leave upward, its failures leave downward, and applications where a person was only saved afterwards leave C0 entirely. The gradient C3 > C2 > C1 > C0 then appears whether or not connection does anything — and that gradient is exactly what §9.1's weight predicts. A metric that cannot fail to confirm the hypothesis it is testing is worse than no metric, and this is the one outcome-flavoured measurement §10.4 left available at single-user scale.
+
+The same error hits the headline metric. §5.2's bar is a person attached **before** the application is submitted; person-attached rate read from current state counts a contact saved a week later, so it reads high while measuring something §5 does not ask for.
+
+So: one append-only record, written once at `mayMarkApplied` (Principle 1) and never recomputed or backfilled.
+
+```ts
+interface SubmissionRecord {
+  jobId: string;
+  at: ISODate;
+  personAttached: { contactId: string; tier: 'C3' | 'C2' | 'C1' } | null;
+  roleFit: number;         // of 25 — §9.1, and §7.2's promotion gate
+  totalScore: number;      // of 100
+  weightsVersion: string;  // §9.1's weights are [assumption]; they will change
+}
+```
+
+Outcomes — response, screen, interview — attach by `jobId` with their own timestamps and never rewrite a field above; that append-only store is B-16. `weightsVersion` is here because a rate pooled across two weight tables is two rates: Activity segments by version or states that it did not. §10.4's behavioural test needs the same treatment — "the jobs the connection term lifted" is a property of the brief on the morning it rendered, not of today's scores, so the promoted set is recorded with the brief.
+
 ---
 
 ## Sources
@@ -380,6 +376,8 @@ So §9.1's weights keep their `[assumption]` tag, and no future run should claim
 - [Why Job Referrals Beat Cold Applications According to Data — refer.me](https://refer.me/blog/why-job-referrals-beat-cold-applications-according-to-data)
 - [Does Emailing the Hiring Manager Work? 79 Outcomes Analyzed — dearhiringmanager.io](https://dearhiringmanager.io/hiring-manager-outreach-study)
 - [Best AI Job Search Tools in 2026: Honestly Compared — RemoteHunt](https://remotehunt.app/blog/best-ai-job-search-tools-2026)
+- [Jobright AI Review 2026: We Tested It — wobo.ai](https://www.wobo.ai/blog/jobright-review/)
+- [Jobright AI Review 2026 — HiringReach (a disclosed Jobright competitor)](https://hiringreach.com/reviews/jobright-ai-review)
 - [Cold applying is still the No. 1 way to get a new job — CNBC](https://www.cnbc.com/2026/01/12/cold-applying-is-still-the-no-1-way-to-get-a-new-job-but-this-method-is-quickly-getting-more-common.html)
 - [Application overload: half of job seekers 'doomjobbing' (Monster, n=1,006) — HCAMag](https://www.hcamag.com/ca/specialization/recruitment/application-overload-half-of-job-seekers-doomjobbing/578466)
 - [Greenhouse Job Board API](https://docs.greenhouse.io/job-board.html)

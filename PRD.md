@@ -1,6 +1,6 @@
 # Hoshi — Product Requirements
 
-**Living document.** Improved daily by the Hoshi Loop. Last substantive revision: 2026-10-11.
+**Living document.** Improved daily by the Hoshi Loop. Last substantive revision: 2026-10-12.
 
 ---
 
@@ -150,9 +150,7 @@ Specified 2026-09-28 (B-03). No code written.
 
 ### 8.1 Discovery is seeded by companies, not keywords
 
-Hoshi does not crawl the job market. It watches a list of boards the user has a reason to care about. A board source enters that list when a ranked alum or existing contact works there, or when the user adds it by hand.
-
-This is the thesis applied to sourcing. A keyword crawl produces more applications; a company watchlist produces more conversations, because every source on the list already has a person attached to it. It is also the only version that is actually available: every documented provider in §8.2 is a *per-company* endpoint. None of them offers cross-company search, so a keyword crawl was never on the table regardless.
+Hoshi does not crawl the job market. It watches a list of boards the user has a reason to care about: a board source enters that list when a ranked alum or existing contact works there, or when the user adds it by hand (§8.7). That is the thesis applied to sourcing — a keyword crawl produces more applications, a company watchlist produces more conversations, because every source on it already has a person attached — and it is also the only shape available, since every documented provider in §8.2 is a *per-company* endpoint with no cross-company search.
 
 ### 8.2 Providers
 
@@ -223,6 +221,18 @@ Reuse `identityKeys`. Match in order, first hit wins:
 The four hosts go in `optional_host_permissions`, requested at the moment the user adds their first board source, never at install. This does not touch Principle 4: discovery runs `fetch` from the service worker against a public API. No content script is registered, no page DOM is read, and no tab the user opened is involved.
 
 `[assumption]` These endpoints are built for browser-side embedding and are expected to send permissive CORS headers, in which case `host_permissions` covers the request without a proxy. **Unverified** — this sandbox's egress allowlist refuses all four hosts, so it could not be tested here. One `curl -I` with an `Origin` header from an ordinary network settles it, and it should be settled before any adapter is written, because a CORS refusal on a documented provider would force a backend hop and change §8's cost profile entirely (Backlog B-11).
+
+### 8.7 Resolving a company to a board handle
+
+Added 2026-10-12. §8.1 seeds the watchlist from companies where the user has a person. A person gives a company *name*; every adapter in §8.2 takes a provider *handle* — Greenhouse token, Lever site, Ashby board name, Workday `{tenant, pod, site}` — and no documented provider offers a name→handle lookup. So §8.1's rule does not by itself produce a fetchable board, and Hoshi never closes the gap by trying candidate handles against the API: a request sent to find out whether a handle exists is a guess wearing HTTP's clothes (Principle 5). Three sources, in order:
+
+1. **Harvested from a page the user already opened.** Hoshi fingerprints nine ATS vendors by URL to recognise job pages (§4), and a hosted board URL carries the handle in its path, so the fingerprint that classifies the page yields the handle at no extra cost — no new permission, no second read. Opening one job subscribes the whole board.
+2. **A careers URL the user pastes.** Same parse, same rules, and the only route for the case below.
+3. **Nothing.** The company stays on the watchlist as **person-only**: it still seeds people and §9's connection term, contributes 0 jobs, and says which it is. It is not dropped and not guessed at.
+
+**The common failure is the embedded board.** Greenhouse tells companies to paste a script tag and *"replace 'bcg' with your job board token"*, and to set the Job Board URL to *"the base URL of the page your job board is embedded on"* — the company's own careers page ([Greenhouse support](https://support.greenhouse.io/hc/en-us/articles/46365908766875-Embed-a-Greenhouse-job-board-on-your-career-site)). The handle is then in the page's script and not in the URL, so rule 1 returns nothing. Hoshi does not go looking for it there: a careers page is out of scope unless granted (Principle 4), and lifting a token out of page JS is exactly the inference §8.4's provenance contract forbids. Embedded boards resolve by rule 2 or stay person-only.
+
+Every `BoardSource` records `handleSource: 'harvested' | 'pasted'` and the URL it was parsed from, so a board that has stopped returning jobs can be told apart from a handle that was never right. `[assumption]` that the handle in a hosted board URL is byte-identical to the API handle for all four providers: it follows from §8.2's endpoint shapes, but no provider documents the equivalence, and the two provider docs that would confirm it could not be opened from this sandbox. Verify it against one live board per provider alongside B-11's CORS check — the same four requests answer both.
 
 ---
 
@@ -381,6 +391,7 @@ Outcomes — response, screen, interview — attach by `jobId` with their own ti
 - [Cold applying is still the No. 1 way to get a new job — CNBC](https://www.cnbc.com/2026/01/12/cold-applying-is-still-the-no-1-way-to-get-a-new-job-but-this-method-is-quickly-getting-more-common.html)
 - [Application overload: half of job seekers 'doomjobbing' (Monster, n=1,006) — HCAMag](https://www.hcamag.com/ca/specialization/recruitment/application-overload-half-of-job-seekers-doomjobbing/578466)
 - [Greenhouse Job Board API](https://docs.greenhouse.io/job-board.html)
+- [Embed a Greenhouse job board on your career site — Greenhouse support](https://support.greenhouse.io/hc/en-us/articles/46365908766875-Embed-a-Greenhouse-job-board-on-your-career-site)
 - [Lever Postings API](https://github.com/lever/postings-api/blob/master/README.md)
 - [Ashby Public Job Posting API](https://developers.ashbyhq.com/docs/public-job-posting-api)
 - [Scraping Workday career sites without a browser, and the 2,000-job ceiling](https://dev.to/dododata/scraping-workday-career-sites-without-a-browser-and-the-2000-job-ceiling-h2e)

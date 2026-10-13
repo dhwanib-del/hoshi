@@ -1,6 +1,6 @@
 # Hoshi — Product Requirements
 
-**Living document.** Improved daily by the Hoshi Loop. Last substantive revision: 2026-10-12.
+**Living document.** Improved daily by the Hoshi Loop. Last substantive revision: 2026-10-13.
 
 ---
 
@@ -8,14 +8,7 @@
 
 Every tool in this category optimizes the wrong number.
 
-Simplify, Teal, Huntr, Jobright and LazyApply all compete on applications sent, forms filled, or resumes scanned. The evidence says that is the low-leverage end of the funnel:
-
-| Path | Interview rate |
-| --- | --- |
-| Referred candidate | 40–65% |
-| Cold application | 2–8% |
-
-Referred candidates who reach an interview are also 2–4x more likely to receive an offer ([refer.me summary of NBER data](https://www.refer.me/blog/do-job-referrals-actually-work-data-behind-response-rates)). That is a 5–10x difference in the thing that actually matters. LazyApply's volume approach is documented as producing *weak* response rates despite high submission counts ([RemoteHunt comparison](https://remotehunt.app/blog/best-ai-job-search-tools-2026)).
+Simplify, Teal, Huntr, Jobright and LazyApply all compete on applications sent, forms filled, or resumes scanned. The evidence says that is the low-leverage end of the funnel: a referred candidate interviews at **40–65%** against a cold application's **2–8%**, and referred candidates who reach an interview are 2–4x more likely to receive an offer ([refer.me summary of NBER data](https://www.refer.me/blog/do-job-referrals-actually-work-data-behind-response-rates)). That is a 5–10x difference in the thing that actually matters. LazyApply's volume approach is documented as producing *weak* response rates despite high submission counts ([RemoteHunt comparison](https://remotehunt.app/blog/best-ai-job-search-tools-2026)).
 
 **One competitor has noticed, and where it put the feature is the whole difference.** Jobright ships "Insider Connections": for a job it has already matched, it surfaces contacts at that company and drafts a referral email ([wobo review](https://www.wobo.ai/blog/jobright-review/)). It is **step five of its flow**, after matching, tailoring and autofill ([HiringReach](https://hiringreach.com/reviews/jobright-ai-review), which sells a competing product and discloses it — so its criticisms of the feature are `[assumption]`, but the position is corroborated by the wobo review above, which also describes the contacts as surfaced per already-matched job). So the claim this document can defend is not that nobody does referrals. It is that **nobody makes the person an input.** A connection step that runs after the job is chosen can only decorate a ranking that already happened — it cannot change which jobs were found, or which one is at the top this morning.
 
@@ -25,12 +18,7 @@ An application sent without a conversation is the 2–8% path. Hoshi's job is to
 
 This is the one sentence the rest of the document answers to. A feature that increases applications per week without increasing conversations per week is not a Hoshi feature.
 
-### What this means concretely
-
-- The Stardust economy already encodes this: outreach pays 40, a submission pays 15 and decays after five per day. That was the right instinct and it should extend to the whole product surface.
-- The Daily Brief leads with *who to talk to*, not only *what to apply to*. Specified in §7.
-- A job with a warm connection outranks a job with a higher raw fit score, up to a bounded limit. Specified in §9.
-- The warm path is also the only part of the funnel a single user generates enough data to measure. §10.1.
+Applied: the Stardust economy already pays outreach 40 against a submission's 15, decaying after five a day; the Daily Brief leads with *who to talk to* (§7); a job with a warm connection outranks a job with a higher raw fit score, up to a bounded limit (§9); and the warm path is the only stretch of the funnel a single user generates enough data to measure (§10.1).
 
 ---
 
@@ -92,7 +80,7 @@ Hoshi is the best job-finding tool when, for a user like its first one:
 4. **Nothing in the pipeline is a surprise** — no silently rewritten resume, no guessed answer, no application the user does not remember making.
 5. **The user's response rate goes up over a season, and Hoshi is honest about how much of that it can and cannot attribute.**
 
-Numbers 1–4 are testable today. Number 5 is specified in §10 — and §10.1 is why its original wording, "Hoshi can show which change moved it", was a promise one user's data cannot keep.
+Numbers 1–4 are testable today. Number 5 is specified in §10, and bounded by §10.1: one user's data cannot show which change moved a response rate.
 
 ---
 
@@ -121,7 +109,7 @@ People first is §1 applied to the surface the user actually opens. The caps are
 
 ### 7.2 What gets promoted, and what the brief never shows
 
-A job enters block 2 only if role fit ≥ 15 of 25 (§9.3 invariant 1) **and** either total fit clears the priority threshold **or** connection tier is C1 or better. Everything else falls to block 3, ordered by company. Block 2 sorts by §9 score descending; ties break to the higher connection tier, then freshness (B-07). **Block 3 never shows a score or a fit label** — a number beside an unpromoted job invites exactly the one-minute apply the caps exist to prevent.
+A job enters block 2 only if role fit ≥ 15 of 25 (§9.3 invariant 1) **and** either total fit clears the priority threshold **or** connection tier is C1 or better. Everything else falls to block 3, ordered by company. Block 2 sorts by §9 score descending; ties break to the higher connection tier, then to freshness under §9.5's narrowing. **Block 3 never shows a score or a fit label** — a number beside an unpromoted job invites exactly the one-minute apply the caps exist to prevent.
 
 ### 7.3 Block 1 rows come from Hoshi's stores, never from a model
 
@@ -202,7 +190,7 @@ Every adapter emits the same `ExtractedJob` shape that `extractJob` produces fro
 | `employmentType` | — | `categories.commitment` | employment type |
 | `workplaceType` | — | `workplaceType` | workplace type |
 
-Field names are taken from the linked docs; verify each against one live response before writing the adapter. Note for B-07: Greenhouse exposes `updated_at`, which is **not** a posted date — a reposted role looks fresh. Ashby exposes a publish date. Any freshness band built on these must record which of the two it got, or it will quietly lie.
+Field names are taken from the linked docs; verify each against one live response before writing the adapter. Dates are the exception that needed its own rule: Greenhouse exposes `updated_at`, which is **not** a posted date, and Ashby exposes a publish date, so every job records which of the two it got — §9.5 is the term that consumes it and the cap that keeps it honest.
 
 `provenance` is populated for every field on this path as `{ source: 'discovery', adapter, path }`, where `path` is the response key the value came from — the same contract the DOM path satisfies with a selector (Principle 6).
 
@@ -244,7 +232,7 @@ Specified 2026-09-29 (B-01). No code written.
 
 The earlier model had no term for whether the user knows anyone at the company, which contradicts §1: a ranking that cannot see the referral path ranks for the wrong funnel. **Connection enters at 20 of 100**, taken from the four terms that predict fit but not conversation — role match, because above the role-fit floor the distribution is dense and the top points do little separating; experience match, which is heavily correlated with role match, so the pair was double-counting one signal; and company and narrative, which overlap role match and were partly proxying for "the user has a person there" — the thing connection now says outright.
 
-Role 25 · eligibility 20 · **connection 20** · experience 10 · company 5 · narrative 5 · location 5 · authorization 5 · freshness 5. Sums to 100. Eligibility is a hard gate; authorization is one too, pending Q4 / B-05; freshness is scored and still unconsumed (B-07).
+Role 25 · eligibility 20 · **connection 20** · experience 10 · company 5 · narrative 5 · location 5 · authorization 5 · freshness 5. Sums to 100. Eligibility is a hard gate; authorization is one too, pending Q4 / B-05; freshness is scored by §9.5.
 
 `[assumption]` The specific weights. No public dataset breaks hiring outcomes down by connection strength, so 20 is a judgment sized against the evidence in §1, not derived from it. §10.4 is the finding that one user's analytics cannot retire this tag — only a cohort can.
 
@@ -286,6 +274,16 @@ Under Principle 6 the connection term must name its evidence, in the line the us
 Never `+20 · strong connection`. **If Hoshi cannot name the person, it cannot award the points** — which makes the no-fabrication rule (Principle 2) enforceable on the score itself, not only on generated text. The same display is what makes §5.3 true: "why this job?" is answered by the score line, without reopening the posting.
 
 **C1 alone must also name where the person came from**, as in the third line above, because C1 is the one tier Hoshi sources instead of the user: the same `provenance` contract as §8.4's fields, applied to a person rather than a string. The shipped competitor version of this tier states no data source and no verification standard (§1), which is the failure Principle 6 exists to prevent, so an unprovenanced C1 awards 0 and not 8. That turns B-12 from "find a source for C1" into "find one Hoshi can name in that line" — and it rules out the easy answer, since §8.2 gives LinkedIn no adapter.
+
+### 9.5 Freshness scores competition, not odds
+
+Added 2026-10-13 (B-07). §9.1 had carried freshness at 5 of 100 since 2026-09-29 with nothing computing it. It now scores exactly one thing: **how full the applicant pool already is** — the only part of a posting's age that has a source behind it. DHI Group, linking nearly 80 million applications to almost 10 million postings, reports that **41% of applications arrive within the first 48 hours and 56% within 96**, against a mean life of **9.8 days** for a single-position posting ([St. Louis Fed](https://www.stlouisfed.org/on-the-economy/2017/november/how-quickly-people-apply-jobs)). Those three figures are the band edges, so the bands are measured rather than invented: **≤ 48h → 5** (~59% of the eventual pool has not arrived yet), **48–96h → 3** (~44%), **4–10 days → 1** (inside mean posting life, the pool substantially full), **> 10 days → 0** (past it — the role may be filled, expired or quietly reposted). `[assumption]` the 5/3/1/0 spacing: the edges are sourced, but how those shares map onto five points is a judgment.
+
+**Freshness does not score the user's chances, and the score line must never imply that it does.** The category's "apply within 24 hours" numbers do not survive their own sourcing. The 2–3x-more-interviews figure and the day-band index under it are one unpublished survey by a tool that sells application speed, and the widely quoted "90% of candidates who got interviews applied in the first 24 hours" is a statement about who was in the pool rather than a rate — when 41% of all applications arrive inside 48 hours, early-heavy interviewees are partly just the arrival distribution ([jobstrack](https://jobstrack.io/blog/first-mover-advantage-applying-early-tech-jobs) collects both and attributes them to GoApply 2024 and EvalCommunity 2024; neither publishes a method, so both are `[assumption]` and neither is used here). That is §10.5's self-confirming measurement wearing a different hat, so Hoshi scores the queue length it can source and stays silent about the odds it cannot.
+
+**No freshness points without a date Hoshi can name (Principles 5 and 6).** §8.4 is where the problem starts: Greenhouse exposes `updated_at`, which moves on an edit or a repost, Ashby exposes a publish date, and a DOM-extracted page may carry neither. So every job records `dateKind: 'posted' | 'updated' | 'none'` beside the field it came from. `none` scores 0 and prints `+0 · no posting date available` — not a default, not half marks. `updated` caps at 3, because an `updated_at` twelve hours old is equally consistent with a June posting edited yesterday, which makes the top band's claim about the pool simply false; the line names the field, as in `+3 · updated 12 Oct — Greenhouse updated_at, not a posting date`. Two more invariants, in §9.3's CI-blocking shape: **(3)** `freshness > 0` requires `dateKind !== 'none'`; **(4)** `dateKind === 'updated'` requires `freshness <= 3`.
+
+**§7.2's second tiebreak is narrowed by the same problem.** It compares raw timestamps rather than bands, and only between jobs of the same `dateKind` — a posting date and an `updated_at` are not the same quantity, and ordering one against the other ranks by which ATS the company bought. Across kinds freshness does not break the tie, and block 2 falls through to company order. B-07's other branch — cut freshness and redistribute its 5 points — is closed: nothing moved, so §9.1 still sums to 100 and §9.3 invariant 2's `C3 == company + narrative + location + freshness (20)` stands as written (rechecked today).
 
 ---
 
@@ -383,13 +381,13 @@ Outcomes — response, screen, interview — attach by `jobId` with their own ti
 ## Sources
 
 - [Do Job Referrals Actually Work? Data Behind Response Rates — refer.me](https://www.refer.me/blog/do-job-referrals-actually-work-data-behind-response-rates)
-- [Why Job Referrals Beat Cold Applications According to Data — refer.me](https://refer.me/blog/why-job-referrals-beat-cold-applications-according-to-data)
 - [Does Emailing the Hiring Manager Work? 79 Outcomes Analyzed — dearhiringmanager.io](https://dearhiringmanager.io/hiring-manager-outreach-study)
 - [Best AI Job Search Tools in 2026: Honestly Compared — RemoteHunt](https://remotehunt.app/blog/best-ai-job-search-tools-2026)
 - [Jobright AI Review 2026: We Tested It — wobo.ai](https://www.wobo.ai/blog/jobright-review/)
 - [Jobright AI Review 2026 — HiringReach (a disclosed Jobright competitor)](https://hiringreach.com/reviews/jobright-ai-review)
-- [Cold applying is still the No. 1 way to get a new job — CNBC](https://www.cnbc.com/2026/01/12/cold-applying-is-still-the-no-1-way-to-get-a-new-job-but-this-method-is-quickly-getting-more-common.html)
 - [Application overload: half of job seekers 'doomjobbing' (Monster, n=1,006) — HCAMag](https://www.hcamag.com/ca/specialization/recruitment/application-overload-half-of-job-seekers-doomjobbing/578466)
+- [How Quickly Do People Apply for Jobs? (DHI Group, ~80M applications) — St. Louis Fed](https://www.stlouisfed.org/on-the-economy/2017/november/how-quickly-people-apply-jobs)
+- [The First-Mover Advantage: Applying Early to Tech Jobs — jobstrack.io (aggregates the GoApply and EvalCommunity timing claims; neither publishes a method)](https://jobstrack.io/blog/first-mover-advantage-applying-early-tech-jobs)
 - [Greenhouse Job Board API](https://docs.greenhouse.io/job-board.html)
 - [Embed a Greenhouse job board on your career site — Greenhouse support](https://support.greenhouse.io/hc/en-us/articles/46365908766875-Embed-a-Greenhouse-job-board-on-your-career-site)
 - [Lever Postings API](https://github.com/lever/postings-api/blob/master/README.md)

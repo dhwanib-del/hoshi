@@ -1,6 +1,6 @@
 # Hoshi — Product Requirements
 
-**Living document.** Improved daily by the Hoshi Loop. Last substantive revision: 2026-10-13.
+**Living document.** Improved daily by the Hoshi Loop. Last substantive revision: 2026-10-16.
 
 ---
 
@@ -52,13 +52,13 @@ Verified by test run, not asserted. 241 tests passing as of 2026-09-27.
 - Autofill with review-before-submit, including the protected-fields group that is left deliberately blank.
 - Stardust economy with a CI-blocking balance invariant: a maximum-volume day (220) can never out-earn a quality day (265).
 - Contacts, alumni ranking with visible shared context, outreach tracking and drafting.
-- Durable storage — all four stores survive a service-worker restart.
+- Durable storage — all four stores survive a service-worker restart. All four hold *current* state; the event log in §10.5 is a fifth with different rules.
 - Career Search Profile with role lanes and explainable eligibility rejection.
 - Side panel: Orbit, Jobs, People, Activity, plus the autofill review sub-page.
 
 **Not built:**
 
-- Specified, no code written: Daily Brief (§7), discovery engine (§8), fit scoring (§9), analytics and honesty rules (§10). Each section header carries its own date.
+- Specified, no code written: Daily Brief (§7), discovery engine (§8), fit scoring (§9), analytics, honesty rules and the event log (§10). Each section header carries its own date.
 - Not yet specified: resume library and tailoring with diff, answer bank, interview mode.
 
 **Blocked:**
@@ -109,7 +109,7 @@ People first is §1 applied to the surface the user actually opens. The caps are
 
 ### 7.2 What gets promoted, and what the brief never shows
 
-A job enters block 2 only if role fit ≥ 15 of 25 (§9.3 invariant 1) **and** either total fit clears the priority threshold **or** connection tier is C1 or better. Everything else falls to block 3, ordered by company. Block 2 sorts by §9 score descending; ties break to the higher connection tier, then to freshness under §9.5's narrowing. **Block 3 never shows a score or a fit label** — a number beside an unpromoted job invites exactly the one-minute apply the caps exist to prevent.
+A job enters block 2 only if role fit ≥ 15 of 25 (§9.3 invariant 1) **and** either total fit clears the priority threshold **or** connection tier is C1 or better. Everything else falls to block 3, ordered by company. Block 2 sorts by §9 score descending; ties break to the higher connection tier, then to freshness under §9.5's narrowing. **Block 3 never shows a score or a fit label** — a number beside an unpromoted job invites exactly the one-minute apply the caps exist to prevent. The promoted set is recorded as it rendered (§10.5).
 
 ### 7.3 Block 1 rows come from Hoshi's stores, never from a model
 
@@ -283,25 +283,17 @@ Added 2026-10-13 (B-07). §9.1 had carried freshness at 5 of 100 since 2026-09-2
 
 **No freshness points without a date Hoshi can name (Principles 5 and 6).** §8.4 is where the problem starts: Greenhouse exposes `updated_at`, which moves on an edit or a repost, Ashby exposes a publish date, and a DOM-extracted page may carry neither. So every job records `dateKind: 'posted' | 'updated' | 'none'` beside the field it came from. `none` scores 0 and prints `+0 · no posting date available` — not a default, not half marks. `updated` caps at 3, because an `updated_at` twelve hours old is equally consistent with a June posting edited yesterday, which makes the top band's claim about the pool simply false; the line names the field, as in `+3 · updated 12 Oct — Greenhouse updated_at, not a posting date`. Two more invariants, in §9.3's CI-blocking shape: **(3)** `freshness > 0` requires `dateKind !== 'none'`; **(4)** `dateKind === 'updated'` requires `freshness <= 3`.
 
-**§7.2's second tiebreak is narrowed by the same problem.** It compares raw timestamps rather than bands, and only between jobs of the same `dateKind` — a posting date and an `updated_at` are not the same quantity, and ordering one against the other ranks by which ATS the company bought. Across kinds freshness does not break the tie, and block 2 falls through to company order. B-07's other branch — cut freshness and redistribute its 5 points — is closed: nothing moved, so §9.1 still sums to 100 and §9.3 invariant 2's `C3 == company + narrative + location + freshness (20)` stands as written (rechecked today).
+**§7.2's second tiebreak is narrowed by the same problem.** It compares raw timestamps rather than bands, and only between jobs of the same `dateKind` — a posting date and an `updated_at` are not the same quantity, and ordering one against the other ranks by which ATS the company bought. Across kinds freshness does not break the tie, and block 2 falls through to company order. B-07's other branch — cut freshness and redistribute its 5 points — is closed: nothing moved, so §9.1 still sums to 100 and §9.3 invariant 2's `C3 == company + narrative + location + freshness (20)` stands as written.
 
 ---
 
 ## 10. Analytics and honesty rules
 
-Specified 2026-10-02 (B-04), extended 2026-10-09 with rule 8 and §10.5. No code written. Renders in the Activity destination; the Daily Brief surface is §7.
+Specified 2026-10-02 (B-04), extended 2026-10-09 with rule 8 and §10.5, and 2026-10-16 with rule 9 and the event log. No code written. Renders in the Activity destination; the Daily Brief surface is §7.
 
 ### 10.1 The sample size decides the metric set
 
-One user is a small sample, and that fact has to come before the choice of metrics rather than after it. To detect a change in a rate at conventional 80% power and α = 0.05 (two-sided two-proportion test), the events needed in *each* arm:
-
-| Rate | Change to detect | n per arm |
-| --- | --- | --- |
-| Application → response | 5% → 10% | 435 |
-| Application → response | 5% → 15% | 141 |
-| Outreach → reply | 25% → 50% | 58 |
-
-Computed, not sourced — the standard normal-approximation two-proportion formula; the script is in the 2026-10-02 brief, so the numbers can be rechecked rather than trusted.
+One user is a small sample, and that fact has to come before the choice of metrics rather than after it. To detect a change in a rate at conventional 80% power and α = 0.05 (two-sided two-proportion test), the events needed in *each* arm are **435** for an application→response move of 5% → 10%, **141** for 5% → 15%, and **58** for an outreach→reply move of 25% → 50%. Computed, not sourced — the standard normal-approximation two-proportion formula; the script is in the 2026-10-02 brief, so the numbers can be rechecked rather than trusted.
 
 A job seeker does not send 282 applications in a season, and if she did, the season would end before the comparison resolved. **Hoshi cannot A/B test its own application funnel for a single user. Not slowly — not at all.** Any dashboard that implies otherwise is misreporting its sample size, and that is the specific failure this section exists to prevent.
 
@@ -321,13 +313,7 @@ Two kinds, and the difference must be visible in the UI.
 | Screens and interviews reached | the end of the funnel |
 | Median time from job page opened to submit | §5.1's ten-minute target |
 
-**Rates — estimates, always with an interval.** These are inferences about a true value from a small n.
-
-| Rate | Denominator |
-| --- | --- |
-| Reply rate | outreach sent |
-| Person-attached rate | applications submitted |
-| Response rate by connection tier **as recorded at submit** (§10.5) | applications in that tier |
+**Rates — estimates, always with an interval.** These are inferences about a true value from a small n, and there are three: **reply rate** over outreach sent; **person-attached rate** over applications submitted; and **response rate by connection tier as recorded at submit** (§10.5) over applications in that tier. Every denominator is subject to rule 9.
 
 **Person-attached rate goes at the top.** It is a proportion of the user's own behaviour rather than the market's response, so it moves the same week, it is entirely under her control, and it measures whether she is running the thesis or merely agreeing with it.
 
@@ -343,6 +329,7 @@ Concrete, replacing the earlier spec's "do not claim causality without enough da
 6. **Insufficient data states the shortfall as a number** (Principle 5): `not enough yet — 14 more sends before this rate means anything`. Never a blank, a zero, or a greyed-out 0%.
 7. **Counts and rates never share a visual treatment.** A count is a fact and a rate is an estimate; if Activity renders them identically, rule 2 is decoration.
 8. **No count or rate may read a value that can change after the event it describes.** Connection tier decays and upgrades (§9.2), person-attached status can be earned late, and the weights themselves are `[assumption]` and will move — so a metric derived from current state describes today's contacts, not the submission it claims to. §10.5 is the record this rule requires. Without it, the tier table above and the headline rate above it are not computable honestly and must not be shown at all.
+9. **A rate's denominator excludes events too recent to have produced an outcome.** Absence of an outcome means *not yet*, not *no*, so a response rate over every submission counts last Tuesday's as a failure — rule 8's bias running the other way, deflating rather than flattering. Submissions inside the maturation window are excluded and the exclusion is stated in rule 6's shape: `9 of 31 applications are too recent to count`. `[assumption]` the window is 21 days, set equal to §9.2's decay clock so there is one clock in the product and not two.
 
 ### 10.4 What this does, and does not do, for §9
 
@@ -357,24 +344,27 @@ So §9.1's weights keep their `[assumption]` tag, and no future run should claim
 
 ### 10.5 What has to be recorded at the event
 
-Rule 8 is a schema requirement, not a display rule, and the reason is that the error it prevents has a direction: it flatters §9.1. If Activity builds §10.2's tier table by joining each application to its contact's *current* tier, then a C2 whose alum replies after the application — including a reply the application itself caused — becomes a C3, so that submission is counted in the C3 bucket precisely because it worked. Meanwhile a C2 that went nowhere decays to C1 at day 21 (§9.2). C2's successes leave upward, its failures leave downward, and applications where a person was only saved afterwards leave C0 entirely. The gradient C3 > C2 > C1 > C0 then appears whether or not connection does anything — and that gradient is exactly what §9.1's weight predicts. A metric that cannot fail to confirm the hypothesis it is testing is worse than no metric, and this is the one outcome-flavoured measurement §10.4 left available at single-user scale.
+Rule 8 is a schema requirement, not a display rule, and the reason is that the error it prevents has a direction: it flatters §9.1. If Activity builds §10.2's tier table by joining each application to its contact's *current* tier, then a C2 whose alum replies after the application — including a reply the application itself caused — becomes a C3, so that submission is counted in the C3 bucket precisely because it worked. Meanwhile a C2 that went nowhere decays to C1 at day 21 (§9.2). C2's successes leave upward, its failures leave downward, and applications where a person was only saved afterwards leave C0 entirely. The gradient C3 > C2 > C1 > C0 then appears whether or not connection does anything — and that gradient is exactly what §9.1's weight predicts. A metric that cannot fail to confirm the hypothesis it is testing is worse than no metric, and this is the one outcome-flavoured measurement §10.4 left available at single-user scale. The same error hits the headline metric: §5.2's bar is a person attached **before** submit, and person-attached rate read from current state counts a contact saved a week later.
 
-The same error hits the headline metric. §5.2's bar is a person attached **before** the application is submitted; person-attached rate read from current state counts a contact saved a week later, so it reads high while measuring something §5 does not ask for.
-
-So: one append-only record, written once at `mayMarkApplied` (Principle 1) and never recomputed or backfilled.
+So: an append-only **event log**, each row written once when the event happens and never recomputed or backfilled. It is a fifth store — §4's four all hold current state, this one holds history and has no update path — and it is one log with three kinds rather than three stores (B-16, resolved 2026-10-16). Rule 8's hazard is mutation, not heterogeneity, so stores that share a write rule are one store with a discriminator; and there are three kinds, because §10.4's behavioural test asks which jobs the connection term lifted *on the morning it lifted them*, which is a property of the brief that rendered rather than of today's scores.
 
 ```ts
-interface SubmissionRecord {
-  jobId: string;
-  at: ISODate;
-  personAttached: { contactId: string; tier: 'C3' | 'C2' | 'C1' } | null;
-  roleFit: number;         // of 25 — §9.1, and §7.2's promotion gate
-  totalScore: number;      // of 100
-  weightsVersion: string;  // §9.1's weights are [assumption]; they will change
-}
+type HoshiEvent = { at: ISODate } & (
+  | { kind: 'submission'; jobId: string; roleFit: number; totalScore: number;
+      weightsVersion: string;                       // written at mayMarkApplied
+      personAttached: { contactId: string; tier: 'C3' | 'C2' | 'C1' } | null }
+  | { kind: 'outcome'; jobId: string; source: 'user' | 'import';
+      stage: 'response' | 'screen' | 'interview' | 'rejected' }
+  | { kind: 'brief'; conversations: { contactId: string; why: BriefRowType }[];
+      promoted: { jobId: string; rank: number; totalScore: number; roleFit: number; tier: Tier }[] }
+);
 ```
 
-Outcomes — response, screen, interview — attach by `jobId` with their own timestamps and never rewrite a field above; that append-only store is B-16. `weightsVersion` is here because a rate pooled across two weight tables is two rates: Activity segments by version or states that it did not. §10.4's behavioural test needs the same treatment — "the jobs the connection term lifted" is a property of the brief on the morning it rendered, not of today's scores, so the promoted set is recorded with the brief.
+`roleFit` and `totalScore` are copied in, not looked up later, and `weightsVersion` is there because a rate pooled across two weight tables is two rates: Activity segments by version or states that it did not.
+
+**A job's stage is derived from the log, never stored beside it.** A `status` field on the job record that the user flips to *Interviewing* can disagree with the log, which readmits rule 8 through the UI. There is no such field: the stage shown on a job is its latest `outcome` event, and the only write anywhere is appending one.
+
+**Nothing is ever deleted, and the arithmetic is the reason.** `chrome.storage.local` holds 10,485,760 bytes unless the `unlimitedStorage` permission lifts it ([Chrome docs](https://developer.chrome.com/docs/extensions/mv2/reference/storage)). A heavy year — 300 submissions, two outcome events each, a brief every morning — serialises to about 400 KB, under 4% of that quota, so the log would take roughly 25 years to become a storage problem. A retention rule would cost code and a judgment call in order to delete the only record of last season. Where the quota does go is the job store, whose `descriptionHtml` fills the same 10 MB at a few hundred jobs (B-17).
 
 ---
 
@@ -388,6 +378,7 @@ Outcomes — response, screen, interview — attach by `jobId` with their own ti
 - [Application overload: half of job seekers 'doomjobbing' (Monster, n=1,006) — HCAMag](https://www.hcamag.com/ca/specialization/recruitment/application-overload-half-of-job-seekers-doomjobbing/578466)
 - [How Quickly Do People Apply for Jobs? (DHI Group, ~80M applications) — St. Louis Fed](https://www.stlouisfed.org/on-the-economy/2017/november/how-quickly-people-apply-jobs)
 - [The First-Mover Advantage: Applying Early to Tech Jobs — jobstrack.io (aggregates the GoApply and EvalCommunity timing claims; neither publishes a method)](https://jobstrack.io/blog/first-mover-advantage-applying-early-tech-jobs)
+- [chrome.storage reference — QUOTA_BYTES and unlimitedStorage](https://developer.chrome.com/docs/extensions/mv2/reference/storage)
 - [Greenhouse Job Board API](https://docs.greenhouse.io/job-board.html)
 - [Embed a Greenhouse job board on your career site — Greenhouse support](https://support.greenhouse.io/hc/en-us/articles/46365908766875-Embed-a-Greenhouse-job-board-on-your-career-site)
 - [Lever Postings API](https://github.com/lever/postings-api/blob/master/README.md)

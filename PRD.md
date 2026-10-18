@@ -1,6 +1,6 @@
 # Hoshi — Product Requirements
 
-**Living document.** Improved daily by the Hoshi Loop. Last substantive revision: 2026-10-17.
+**Living document.** Improved daily by the Hoshi Loop. Last substantive revision: 2026-10-18.
 
 ---
 
@@ -19,12 +19,6 @@ An application sent without a conversation is the 2–8% path. Hoshi's job is to
 This is the one sentence the rest of the document answers to. A feature that increases applications per week without increasing conversations per week is not a Hoshi feature.
 
 Applied: the Stardust economy already pays outreach 40 against a submission's 15, decaying after five a day; the Daily Brief leads with *who to talk to* (§7); a job with a warm connection outranks a job with a higher raw fit score, up to a bounded limit (§9); and the warm path is the only stretch of the funnel a single user generates enough data to measure (§10.1).
-
----
-
-## 2. Where the category fails
-
-Two failures from the 2026-09-27 competitive read are live constraints on this build; the rest of that read is in §1. **Discovery** is the gap Hoshi has not filled — Huntr makes the user find every listing, and §8 is the answer. **Generic output** is the failure Principle 2 already prevents — Simplify and Jobright are both reviewed as needing heavy editing, extended by B-06. Both are review aggregation rather than a citable study ([RemoteHunt](https://remotehunt.app/blog/best-ai-job-search-tools-2026) is the closest), so at the per-tool level they are `[assumption]` and carry direction, not measurement. Monetization and billing practice — Teal's paywall, Jobright's billing complaints — are cut from this document until Q3 says what Hoshi ships as.
 
 ---
 

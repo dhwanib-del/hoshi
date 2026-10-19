@@ -1,6 +1,6 @@
 # Hoshi — Product Requirements
 
-**Living document.** Improved daily by the Hoshi Loop. Last substantive revision: 2026-10-18.
+**Living document.** Improved daily by the Hoshi Loop. Last substantive revision: 2026-10-19.
 
 ---
 
@@ -113,17 +113,6 @@ Each row names a person, the shared context, and why today. Four types, in prior
 
 Rates stay in Activity. Two reasons, both from §10.3: a rate must carry its 95% interval at the same type size, which does not survive beside a CTA at 360px, and a daily surface invites the period-over-period comparison rule 3 forbids unless the intervals are disjoint. "Your reply rate is up" is a spec violation on this surface, not a copy choice. When both top blocks are empty the brief gives the shortfall as a number (rule 6) — `nothing today — 0 new postings across your 6 watched boards since yesterday, and no contact due before Tue` — never a filler suggestion, never a padded list.
 
-```
-Orbit · Sat 3 Oct
-TODAY'S CONVERSATIONS
-Priya Raman — UMSI '23 · replied 12 Sep, you haven't answered
-Marcus Lee — UMSI '21 · sent 4 Sep, 24 days, no reply — follow up once
-JOBS WORTH YOUR MORNING
-Product Designer, Figma · 78 · +20 Priya Raman — replied 12 Sep
-UX Researcher II, Duolingo · 71 · +14 Marcus Lee — no reply yet
-▸ Also open at companies you're watching — 11
-```
-
 ---
 
 ## 8. Discovery engine
@@ -225,6 +214,18 @@ Added 2026-10-17. Nothing notifies a crawler when a role closes, which is why *"
 - **No board to be absent from** — a page-extracted job at a person-only company (§8.7) — stays `unknown` indefinitely. Three states, never two: `live | closed | unknown`, and `unknown` is never rendered as either of the others.
 
 A closed job leaves both job blocks of the brief (§7.1) and is never promoted, scored or re-ranked; a `live` job whose freshness is 0 is still a job. **Delisting writes no `outcome` event** (§10.5): a posting coming down says nothing about the user's application, the listing's state is not the application's stage, and logging it as `rejected` would invent a result the market never gave — Principle 2 on the event log, where the append-only rule means a fabricated row can never be taken back.
+
+### 8.9 Polling cadence: once a day, bounded by the brief and by the service worker
+
+Added 2026-10-19 (B-18). §8.8 made delisting latency equal to the polling interval, and nothing specified one. The rule is to fetch the documented limit before designing around it, so: **no provider publishes a read limit for these endpoints.** Greenhouse *"publishes no rate limit for its GET endpoints"*, Ashby *"publishes no rate limit for the public job posting endpoint"*, and Lever *"publishes no rate limit for reading postings"* — its only published figure, 2 requests per second, governs application POSTs ([JobsPipe source notes](https://jobspipe.dev/sources/lever.md), a seller of ATS feed data, so tagged where it advises; Workday documents no API at all, §8.2). The interval is therefore not provider-bound, and the absent number is not permission: the ceiling is enforced as behaviour rather than as a rate, so on a 429 or 5xx that board backs off exponentially and that poll closes nothing (§8.8).
+
+Volume was never going to bind it either. One request per documented board and `ceil(jobs / 20)` for Workday (§8.2) makes a twelve-board watchlist holding two 200-job Workday boards **30 requests a poll** — one request every 48 minutes at a poll a day — and fifty boards polled *hourly* 2,280 a day, 0.026 req/s.
+
+**What binds is the brief.** §7 renders once a morning, so a job fetched at noon reaches the user next morning either way, and an interval shorter than the brief's buys latency she cannot see. **One poll per board per day, scheduled to complete before the brief is composed**, plus an immediate poll the moment a handle is harvested or pasted (§8.7) so a new board is not empty for a day. Freshness tolerates that interval: §9.5's date comes from the provider, not from when Hoshi first saw the job, so polling adds no error to the band — only delay before the job can appear, at worst one interval, which still leaves 24 of the top band's 48 hours.
+
+**A failed poll leaves a stale `live`, and it has to say so.** §8.8 closes nothing on an incomplete response, so a board erroring for a week would hold every job `live` on week-old evidence. Each `BoardSource` records `lastCompleteAt` — its last response with `complete === true` — and a job whose board has gone **more than two intervals** without one returns to `unknown`, which is never rendered as `live` or `closed`. A board nobody can reach withdraws its jobs' listing claim instead of asserting one Hoshi stopped checking.
+
+**The limit that does bind is the service worker.** An MV3 worker is terminated after 30 seconds of inactivity, if a single request takes longer than 5 minutes, or if one `fetch` takes more than 30 seconds to respond ([Chrome docs](https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle)), and `chrome.alarms` will not honour a period under 0.5 minutes in a packed extension ([alarms reference](https://developer.chrome.com/docs/extensions/mv2/reference/alarms)). A cycle is therefore not one loop over the watchlist: boards are fetched one at a time with each result persisted as it lands, so a worker death resumes at the next board rather than restarting, and one hanging board costs its own fetch and nothing else.
 
 ---
 
@@ -383,7 +384,12 @@ type HoshiEvent = { at: ISODate } & (
 - [How Quickly Do People Apply for Jobs? (DHI Group, ~80M applications) — St. Louis Fed](https://www.stlouisfed.org/on-the-economy/2017/november/how-quickly-people-apply-jobs)
 - [The First-Mover Advantage: Applying Early to Tech Jobs — jobstrack.io (aggregates the GoApply and EvalCommunity timing claims; neither publishes a method)](https://jobstrack.io/blog/first-mover-advantage-applying-early-tech-jobs)
 - [Job aggregator sites: where each one actually gets its listings — JobsPipe (sells ATS feed data)](https://jobspipe.dev/blog/job-aggregator-sites)
+- [Lever Jobs API source notes — JobsPipe (sells ATS feed data; cited for the absence of a published read limit)](https://jobspipe.dev/sources/lever.md)
+- [Greenhouse Jobs API source notes — JobsPipe](https://jobspipe.dev/sources/greenhouse.md)
+- [Ashby Jobs API source notes — JobsPipe](https://jobspipe.dev/sources/ashby.md)
 - [chrome.storage reference — QUOTA_BYTES and unlimitedStorage](https://developer.chrome.com/docs/extensions/mv2/reference/storage)
+- [Extension service worker lifecycle — idle timeout, 5-minute task ceiling, 30-second fetch ceiling](https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle)
+- [chrome.alarms reference — the 0.5-minute minimum period](https://developer.chrome.com/docs/extensions/mv2/reference/alarms)
 - [Greenhouse Job Board API](https://docs.greenhouse.io/job-board.html)
 - [Embed a Greenhouse job board on your career site — Greenhouse support](https://support.greenhouse.io/hc/en-us/articles/46365908766875-Embed-a-Greenhouse-job-board-on-your-career-site)
 - [Lever Postings API](https://github.com/lever/postings-api/blob/master/README.md)

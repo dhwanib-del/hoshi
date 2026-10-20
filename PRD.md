@@ -1,6 +1,6 @@
 # Hoshi — Product Requirements
 
-**Living document.** Improved daily by the Hoshi Loop. Last substantive revision: 2026-10-19.
+**Living document.** Improved daily by the Hoshi Loop. Last substantive revision: 2026-10-20.
 
 ---
 
@@ -249,10 +249,14 @@ Connection is tiered by the action available to the user today, not by an inferr
 | --- | --- | --- |
 | **C3** | A contact at the company who has replied to the user, or is recorded as willing to refer | 20 |
 | **C2** | A ranked alum or saved contact at the company, contacted or not, no reply yet | 14 |
-| **C1** | A named person at the company that Hoshi surfaced but the user has not saved — the recruiter on the posting, an alum in the ranked list | 8 |
+| **C1** | A ranked alum at the company that Hoshi surfaced and the user has not saved — one source only, below | 8 |
 | **C0** | No named person | 0 |
 
 `[assumption]` The tier boundaries and their spacing. The sourced claim is the referral-vs-cold gap in §1; the interior gradient is not sourced, because the data does not exist at that resolution. An observational study of 79 published outreach accounts is the closest public thing, and its authors state plainly that its numbers are not rates — the corpus is self-selected toward unusually good and unusually bad outcomes ([dearhiringmanager.io](https://dearhiringmanager.io/hiring-manager-outreach-study)). It is not a basis for a weight, and is cited here so nobody later mistakes it for one.
+
+**C1 has exactly one source, and it is not the recruiter on the posting.** Added 2026-10-20 (B-12). No endpoint in §8.2 returns the recruiter named on a posting. The Greenhouse board API's job object carries no person field at all ([Apify's field list for the official Job Board API](https://apify.com/usestring/greenhouse-jobs.md)), and the two providers that do hold the person keep it behind the employer's own credentials: Ashby's `hiringTeam` and `author` sit on the authenticated job endpoints, while the public posting endpoints return title, department, location, workplace and employment type, published date and `descriptionHtml` — and no person ([Truto](https://truto.one/integrations/detail/ashby.md)); Lever's `hiring_managers` and `followers` likewise appear only through an authenticated connection ([Apideck](https://www.apideck.com/integrations/lever/postings)). `[assumption]` on each reading, since the three provider docs refuse to open from the loop's sandbox and these are third-party pages with integration products to sell — but three independents agree, and listing a field they cannot reach would serve them better than omitting it. **The contrast is the finding: the field exists, and Hoshi will never hold the key** — §8.6's permission surface is built on these endpoints being unauthenticated, so there is no version of Hoshi that reaches the authenticated one. The other two routes are closed on principle rather than on availability: a name lifted out of `descriptionHtml` has no response key to record as its `path` (§8.4) and reading a person out of prose is the inference Principle 2 forbids, and §8.2 gives LinkedIn no adapter. **So C1 is a ranked alum at the company whom the user has not saved, and nothing else** — which the build already has (§4), so the tier keeps its 8 points and no weight moves. Its row prints that origin, as the third line of §9.4 shows: C1 is the one tier Hoshi sources instead of the user, the shipped competitor version of it states no data source at all (§1), and an unprovenanced C1 therefore awards 0 rather than 8. **Invariant (5)**, in §9.3's CI-blocking shape: `tier === 'C1'` requires a resolvable alum record, which makes an unprovenanced C1 unconstructible rather than merely unrewarded.
+
+**C1 therefore adds ordering, not reach.** §8.1 seeds the watchlist from companies where a ranked alum or saved contact works, so every company that can produce a C1 is already a watched company: §7.2's `tier ≥ C1` promotion clause is not a second route into the brief, only a second reason a job at a company already on the list clears it. That is narrower than §7.2 reads as claiming, and it is the honest version — C1 cannot surface an employer the user has no path to, and a tier that could would be the inferred-closeness guess the top of this section refuses.
 
 **Decay.** A C2 with no reply after 21 days degrades to C1: an unanswered message is information about the path, and the score should stop claiming a warmth that did not materialise. C3 never decays — the reply already happened. `[assumption]` the 21 days. Because the tier therefore changes without the user doing anything, it cannot be read back from current state when measuring (§10.3 rule 8, §10.5).
 
@@ -262,8 +266,6 @@ These are the testable part. Both should be CI-blocking, in the shape of the exi
 
 1. **Connection re-ranks the qualified set; it does not admit to it.** A job below the role-fit floor (role < 15 of 25) never enters the Daily Brief, whatever its connection tier. Knowing someone at a company whose roles the user cannot do is not an opportunity, and a scoring model that lets C3 drag unqualified jobs upward would produce exactly the pipeline §5.4 forbids.
 2. **Connection is decisive among comparable jobs and nowhere else.** `C3 (20) == company + narrative + location + freshness (20)` and `C3 (20) < role + experience (35)`. So among jobs of similar role fit, a job with a replied-to contact cannot be *outscored* on the four soft terms — at worst it ties, and §7.2's first tiebreak is the higher connection tier, so it still leads — while a clearly better-fitting job still beats a clearly worse one with a friend attached. The equality is deliberate and the test is `==`, not `>`: this clause read *exceeds* until 2026-10-11, which is false arithmetic and a test written from it would have failed.
-
-Together these two bound the term: strong enough to change the daily ordering, too small to corrupt it.
 
 ### 9.4 Explanation
 
@@ -277,8 +279,6 @@ Under Principle 6 the connection term must name its evidence, in the line the us
 ```
 
 Never `+20 · strong connection`. **If Hoshi cannot name the person, it cannot award the points** — which makes the no-fabrication rule (Principle 2) enforceable on the score itself, not only on generated text. The same display is what makes §5.3 true: "why this job?" is answered by the score line, without reopening the posting.
-
-**C1 alone must also name where the person came from**, as in the third line above, because C1 is the one tier Hoshi sources instead of the user: the same `provenance` contract as §8.4's fields, applied to a person rather than a string. The shipped competitor version of this tier states no data source and no verification standard (§1), which is the failure Principle 6 exists to prevent, so an unprovenanced C1 awards 0 and not 8. That turns B-12 from "find a source for C1" into "find one Hoshi can name in that line" — and it rules out the easy answer, since §8.2 gives LinkedIn no adapter.
 
 ### 9.5 Freshness scores competition, not odds
 
@@ -387,6 +387,7 @@ type HoshiEvent = { at: ISODate } & (
 - [Lever Jobs API source notes — JobsPipe (sells ATS feed data; cited for the absence of a published read limit)](https://jobspipe.dev/sources/lever.md)
 - [Greenhouse Jobs API source notes — JobsPipe](https://jobspipe.dev/sources/greenhouse.md)
 - [Ashby Jobs API source notes — JobsPipe](https://jobspipe.dev/sources/ashby.md)
+- Field lists for the public posting endpoints, read from third parties because the provider docs refuse to open from the loop's sandbox — all three sell integration or scraping products, so cited for what they list rather than for what they advise: [Greenhouse — Apify](https://apify.com/usestring/greenhouse-jobs.md) · [Ashby — Truto](https://truto.one/integrations/detail/ashby.md) · [Lever — Apideck](https://www.apideck.com/integrations/lever/postings)
 - [chrome.storage reference — QUOTA_BYTES and unlimitedStorage](https://developer.chrome.com/docs/extensions/mv2/reference/storage)
 - [Extension service worker lifecycle — idle timeout, 5-minute task ceiling, 30-second fetch ceiling](https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle)
 - [chrome.alarms reference — the 0.5-minute minimum period](https://developer.chrome.com/docs/extensions/mv2/reference/alarms)

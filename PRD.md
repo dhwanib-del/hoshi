@@ -1,6 +1,6 @@
 # Hoshi — Product Requirements
 
-**Living document.** Improved daily by the Hoshi Loop. Last substantive revision: 2026-10-20.
+**Living document.** Improved daily by the Hoshi Loop. Last substantive revision: 2026-10-21.
 
 ---
 
@@ -258,7 +258,7 @@ Connection is tiered by the action available to the user today, not by an inferr
 
 **C1 therefore adds ordering, not reach.** §8.1 seeds the watchlist from companies where a ranked alum or saved contact works, so every company that can produce a C1 is already a watched company: §7.2's `tier ≥ C1` promotion clause is not a second route into the brief, only a second reason a job at a company already on the list clears it. That is narrower than §7.2 reads as claiming, and it is the honest version — C1 cannot surface an employer the user has no path to, and a tier that could would be the inferred-closeness guess the top of this section refuses.
 
-**Decay.** A C2 with no reply after 21 days degrades to C1: an unanswered message is information about the path, and the score should stop claiming a warmth that did not materialise. C3 never decays — the reply already happened. `[assumption]` the 21 days. Because the tier therefore changes without the user doing anything, it cannot be read back from current state when measuring (§10.3 rule 8, §10.5).
+**Decay.** A C2 with no reply after 21 days degrades to C1: an unanswered message is information about the path, and the score should stop claiming a warmth that did not materialise. C3 never decays — the reply already happened. `[assumption]` the 21 days. Because the tier therefore changes without the user doing anything, it cannot be read back from current state when measuring (§10.3 rule 8, §10.5). **Both ends of that clock are read from the log, not from a flag.** Added 2026-10-21: C3 requires a `reply` or `refer-offered` row for that contact — **invariant (6)**, in §9.3's CI-blocking shape — and *no reply after 21 days* means no such row within 21 days of the thread's `outreach` row (§10.5). The largest award in the tier table was otherwise a boolean the user could set and clear, which is the one thing §9.4's naming rule cannot catch: Hoshi can name the person correctly and still be wrong about what they did.
 
 ### 9.3 Two invariants
 
@@ -294,7 +294,7 @@ Added 2026-10-13 (B-07). §9.1 had carried freshness at 5 of 100 since 2026-09-2
 
 ## 10. Analytics and honesty rules
 
-Specified 2026-10-02 (B-04), extended 2026-10-09 with rule 8 and §10.5, and 2026-10-16 with rule 9 and the event log. No code written. Renders in the Activity destination; the Daily Brief surface is §7.
+Specified 2026-10-02 (B-04), extended 2026-10-09 with rule 8 and §10.5, 2026-10-16 with rule 9 and the event log, and 2026-10-21 with the outreach kinds. No code written. Renders in the Activity destination; the Daily Brief surface is §7.
 
 ### 10.1 The sample size decides the metric set
 
@@ -312,13 +312,13 @@ Two kinds, and the difference must be visible in the UI.
 
 | Metric | Why it is here |
 | --- | --- |
-| Outreach sent, replies received, per week | the thesis' numerator |
+| Outreach threads opened, replies received, per week (§10.5) | the thesis' numerator |
 | Applications submitted | the number every competitor leads with; here it is context, not a score |
 | Applications submitted **with a named person attached before submit** (§10.5) | §5.2 is pass/fail per application, and this is the count |
 | Screens and interviews reached | the end of the funnel |
 | Median time from job page opened to submit | §5.1's ten-minute target |
 
-**Rates — estimates, always with an interval.** These are inferences about a true value from a small n, and there are three: **reply rate** over outreach sent; **person-attached rate** over applications submitted; and **response rate by connection tier as recorded at submit** (§10.5) over applications in that tier. Every denominator is subject to rule 9.
+**Rates — estimates, always with an interval.** These are inferences about a true value from a small n, and there are three: **reply rate** over outreach threads; **person-attached rate** over applications submitted; and **response rate by connection tier as recorded at submit** (§10.5) over applications in that tier. Every denominator is subject to rule 9.
 
 **Person-attached rate goes at the top.** It is a proportion of the user's own behaviour rather than the market's response, so it moves the same week, it is entirely under her control, and it measures whether she is running the thesis or merely agreeing with it.
 
@@ -338,20 +338,13 @@ Concrete, replacing the earlier spec's "do not claim causality without enough da
 
 ### 10.4 What this does, and does not do, for §9
 
-B-04 was given one specific job: make the 20-of-100 connection weight in §9.1 falsifiable. **For a single user it cannot.** A season's applications split four ways leaves every tier far under the 141 of §10.1, and the two tiers that matter most, C3 and C2, are the rarest.
-
-The weight gets two weaker tests instead, each honest about which it is:
-
-1. **Behavioural, available immediately.** Of the jobs the connection term lifted to the top of the brief, which did the user act on, and did she reach out before applying? If the term reorders her day and she follows the new order, it is working as a prioritisation device whatever its effect on outcomes. This is a count, not a rate, so §10.3 rule 1 does not block it.
-2. **Outcome, available only at cohort scale.** Comparing response rate across tiers needs many users' applications pooled. Whether that is ever possible is **Q1 and Q3** — a personal tool cannot run this test and a Chrome Web Store product can. It is not an engineering question.
-
-So §9.1's weights keep their `[assumption]` tag, and no future run should claim analytics retired it. Recorded here to stop exactly that.
+B-04 was given one specific job: make the 20-of-100 connection weight in §9.1 falsifiable. **For a single user it cannot** — a season's applications split four ways leaves every tier far under the 141 of §10.1, and C3 and C2, the two that matter most, are the rarest. Two weaker tests stand in, each honest about which it is. **Behavioural, available immediately:** of the jobs the connection term lifted to the top of the brief, which did the user act on, and did she reach out before applying? If the term reorders her day and she follows the new order it is working as a prioritisation device whatever its effect on outcomes — and it is a count, not a rate, so §10.3 rule 1 does not block it. **Outcome, only at cohort scale:** comparing response rate across tiers needs many users' applications pooled, which is **Q1 and Q3** — a personal tool cannot run this test and a Chrome Web Store product can — rather than an engineering question. So §9.1's weights keep their `[assumption]` tag, and no future run should claim analytics retired it.
 
 ### 10.5 What has to be recorded at the event
 
 Rule 8 is a schema requirement, not a display rule, and the reason is that the error it prevents has a direction: it flatters §9.1. If Activity builds §10.2's tier table by joining each application to its contact's *current* tier, then a C2 whose alum replies after the application — including a reply the application itself caused — becomes a C3, so that submission is counted in the C3 bucket precisely because it worked. Meanwhile a C2 that went nowhere decays to C1 at day 21 (§9.2). C2's successes leave upward, its failures leave downward, and applications where a person was only saved afterwards leave C0 entirely. The gradient C3 > C2 > C1 > C0 then appears whether or not connection does anything — and that gradient is exactly what §9.1's weight predicts. A metric that cannot fail to confirm the hypothesis it is testing is worse than no metric, and this is the one outcome-flavoured measurement §10.4 left available at single-user scale. The same error hits the headline metric: §5.2's bar is a person attached **before** submit, and person-attached rate read from current state counts a contact saved a week later.
 
-So: an append-only **event log**, each row written once when the event happens and never recomputed or backfilled. It is a fifth store — §4's four all hold current state, this one holds history and has no update path — and it is one log with three kinds rather than three stores (B-16, resolved 2026-10-16). Rule 8's hazard is mutation, not heterogeneity, so stores that share a write rule are one store with a discriminator; and there are three kinds, because §10.4's behavioural test asks which jobs the connection term lifted *on the morning it lifted them*, which is a property of the brief that rendered rather than of today's scores.
+So: an append-only **event log**, each row written once when the event happens and never recomputed or backfilled. It is a fifth store — §4's four all hold current state, this one holds history and has no update path — and it is one log with several kinds rather than several stores (B-16, resolved 2026-10-16). Rule 8's hazard is mutation, not heterogeneity, so stores that share a write rule are one store with a discriminator; and there is a `brief` kind, because §10.4's behavioural test asks which jobs the connection term lifted *on the morning it lifted them*, which is a property of the brief that rendered rather than of today's scores.
 
 ```ts
 type HoshiEvent = { at: ISODate } & (
@@ -362,14 +355,21 @@ type HoshiEvent = { at: ISODate } & (
       stage: 'response' | 'screen' | 'interview' | 'rejected' }
   | { kind: 'brief'; conversations: { contactId: string; why: BriefRowType }[];
       promoted: { jobId: string; rank: number; totalScore: number; roleFit: number; tier: Tier }[] }
+  | { kind: 'outreach'; threadId: string; contactId: string; jobId?: string;
+      channel: 'email' | 'linkedin' | 'other'; step: 'sent' | 'followup' }
+  | { kind: 'reply'; threadId: string; contactId: string; source: 'user';
+      step: 'replied' | 'refer-offered';
+      arrived: { kind: 'stated'; at: ISODate } | { kind: 'unknown' } }
 );
 ```
 
 `roleFit` and `totalScore` are copied in, not looked up later, and `weightsVersion` is there because a rate pooled across two weight tables is two rates: Activity segments by version or states that it did not.
 
+**The thesis' own numerator had no record.** Added 2026-10-21. §10.2 counts outreach and replies and makes reply rate a headline rate, and all three would have been read off §4's outreach tracking, which is current state — so rule 8's closing sentence applied to them unchanged: not computable honestly, therefore not to be shown at all. Hence the last two kinds above, and three rules inside them. **The grain is the thread, not the contact.** One person messaged twice in a season is two threads, and a rate whose denominator is contacts-with-outreach is not a reply rate; it also means the rows outlive the contact record, so merging two alum entries or deleting a contact who went nowhere no longer takes sends out of a denominator while the replies she remembers stay in the numerator — rule 8's flattering direction again, arriving through the address book instead of through the tier. **Hoshi cannot witness a reply, and it cannot witness a send either.** The only places either happens are her mail and her LinkedIn, which Principle 4 and §8.2 refuse, so both rows are her assertions rather than Hoshi's observations. The asymmetry is in *when* she asserts them: a send is marked inside the drafting flow that produced it, so the row's `at` is a usable send date, while a reply is marked whenever she next opens the panel, which is why only `reply` carries `arrived` — §9.5's `dateKind` problem on a person instead of a posting, with the same consequence. **Reply latency is computed only over `arrived.kind === 'stated'` rows and states how many it excluded** (rule 9's shape); reply *rate* needs no arrival date and uses every row. What the rate cannot escape is that its denominator is sends she remembered to mark, and `[assumption]` an unmarked send is more often one that went nowhere — so reply rate is an upper bound and Activity says so beside it, in rule 6's shape.
+
 **A job's stage is derived from the log, never stored beside it.** A `status` field on the job record that the user flips to *Interviewing* can disagree with the log, which readmits rule 8 through the UI. There is no such field: the stage shown on a job is its latest `outcome` event, and the only write anywhere is appending one. A job's *listing* state (§8.8) is a different thing and is not an outcome.
 
-**Nothing is ever deleted, and the arithmetic is the reason.** `chrome.storage.local` holds 10,485,760 bytes unless the `unlimitedStorage` permission lifts it ([Chrome docs](https://developer.chrome.com/docs/extensions/mv2/reference/storage)). A heavy year — 300 submissions, two outcome events each, a brief every morning — serialises to about 400 KB, under 4% of that quota, so the log would take roughly 25 years to become a storage problem. A retention rule would cost code and a judgment call in order to delete the only record of last season. Where the quota does go is the job store, whose `descriptionHtml` fills the same 10 MB at a few hundred jobs (B-17).
+**Nothing is ever deleted, and the arithmetic is the reason.** `chrome.storage.local` holds 10,485,760 bytes unless the `unlimitedStorage` permission lifts it ([Chrome docs](https://developer.chrome.com/docs/extensions/mv2/reference/storage)). A heavy year — 300 submissions, two outcome events each, 300 sends and follow-ups, 60 replies, and a brief every morning — serialises to about 400 KB, under 4% of that quota, so the log would take roughly 25 years to become a storage problem. A retention rule would cost code and a judgment call in order to delete the only record of last season. Where the quota does go is the job store, whose `descriptionHtml` fills the same 10 MB at a few hundred jobs (B-17).
 
 ---
 

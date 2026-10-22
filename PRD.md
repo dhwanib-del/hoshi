@@ -1,6 +1,6 @@
 # Hoshi — Product Requirements
 
-**Living document.** Improved daily by the Hoshi Loop. Last substantive revision: 2026-10-21.
+**Living document.** Improved daily by the Hoshi Loop. Last substantive revision: 2026-10-22.
 
 ---
 
@@ -52,8 +52,8 @@ Verified by test run, not asserted. 241 tests passing as of 2026-09-27.
 
 **Not built:**
 
-- Specified, no code written: Daily Brief (§7), discovery engine (§8), fit scoring (§9), analytics, honesty rules and the event log (§10). Each section header carries its own date.
-- Not yet specified: resume library and tailoring with diff, answer bank, interview mode.
+- Specified, no code written: Daily Brief (§7), discovery engine (§8), fit scoring (§9), analytics, honesty rules and the event log (§10), answer bank (§11). Each section header carries its own date.
+- Not yet specified: resume library and tailoring with diff, interview mode.
 
 **Blocked:**
 
@@ -63,8 +63,6 @@ Verified by test run, not asserted. 241 tests passing as of 2026-09-27.
 ---
 
 ## 5. What "best" would mean
-
-A definition worth measuring against, so the loop has a target rather than a direction.
 
 Hoshi is the best job-finding tool when, for a user like its first one:
 
@@ -179,11 +177,7 @@ Field names are taken from the linked docs; verify each against one live respons
 
 ### 8.5 Dedup
 
-Reuse `identityKeys`. Match in order, first hit wins:
-
-1. canonical `applyUrl` (strip query and fragment)
-2. `{ adapter, providerJobId }`
-3. normalised `{ company, title, location }`
+Reuse `identityKeys`. Match in order, first hit wins: canonical `applyUrl` with query and fragment stripped, then `{ adapter, providerJobId }`, then normalised `{ company, title, location }`.
 
 **A page-extracted job always wins over a discovered one.** The page the user actually opened is the higher-fidelity record; discovery fills empty fields on the existing job and leaves populated ones alone, so provenance never degrades from a selector to a guess.
 
@@ -243,7 +237,7 @@ Role 25 · eligibility 20 · **connection 20** · experience 10 · company 5 · 
 
 ### 9.2 Tiers — scored by what the person can do
 
-Connection is tiered by the action available to the user today, not by an inferred closeness score. A closeness score would be a guess about a relationship Hoshi cannot see.
+Connection is tiered by the action available to the user today, not by an inferred closeness score. A closeness score would be a guess about a relationship Hoshi cannot see. `[assumption]` the tier boundaries and their spacing: the sourced claim is §1's referral-vs-cold gap, the interior gradient is not sourced because no public data resolves outcomes at that resolution, and the closest public corpus — 79 self-selected published outreach accounts whose own authors state its numbers are not rates ([dearhiringmanager.io](https://dearhiringmanager.io/hiring-manager-outreach-study)) — is not a basis for a weight and must not later be mistaken for one.
 
 | Tier | Definition | Points |
 | --- | --- | --- |
@@ -251,8 +245,6 @@ Connection is tiered by the action available to the user today, not by an inferr
 | **C2** | A ranked alum or saved contact at the company, contacted or not, no reply yet | 14 |
 | **C1** | A ranked alum at the company that Hoshi surfaced and the user has not saved — one source only, below | 8 |
 | **C0** | No named person | 0 |
-
-`[assumption]` The tier boundaries and their spacing. The sourced claim is the referral-vs-cold gap in §1; the interior gradient is not sourced, because the data does not exist at that resolution. An observational study of 79 published outreach accounts is the closest public thing, and its authors state plainly that its numbers are not rates — the corpus is self-selected toward unusually good and unusually bad outcomes ([dearhiringmanager.io](https://dearhiringmanager.io/hiring-manager-outreach-study)). It is not a basis for a weight, and is cited here so nobody later mistakes it for one.
 
 **C1 has exactly one source, and it is not the recruiter on the posting.** Added 2026-10-20 (B-12). No endpoint in §8.2 returns the recruiter named on a posting. The Greenhouse board API's job object carries no person field at all ([Apify's field list for the official Job Board API](https://apify.com/usestring/greenhouse-jobs.md)), and the two providers that do hold the person keep it behind the employer's own credentials: Ashby's `hiringTeam` and `author` sit on the authenticated job endpoints, while the public posting endpoints return title, department, location, workplace and employment type, published date and `descriptionHtml` — and no person ([Truto](https://truto.one/integrations/detail/ashby.md)); Lever's `hiring_managers` and `followers` likewise appear only through an authenticated connection ([Apideck](https://www.apideck.com/integrations/lever/postings)). `[assumption]` on each reading, since the three provider docs refuse to open from the loop's sandbox and these are third-party pages with integration products to sell — but three independents agree, and listing a field they cannot reach would serve them better than omitting it. **The contrast is the finding: the field exists, and Hoshi will never hold the key** — §8.6's permission surface is built on these endpoints being unauthenticated, so there is no version of Hoshi that reaches the authenticated one. The other two routes are closed on principle rather than on availability: a name lifted out of `descriptionHtml` has no response key to record as its `path` (§8.4) and reading a person out of prose is the inference Principle 2 forbids, and §8.2 gives LinkedIn no adapter. **So C1 is a ranked alum at the company whom the user has not saved, and nothing else** — which the build already has (§4), so the tier keeps its 8 points and no weight moves. Its row prints that origin, as the third line of §9.4 shows: C1 is the one tier Hoshi sources instead of the user, the shipped competitor version of it states no data source at all (§1), and an unprovenanced C1 therefore awards 0 rather than 8. **Invariant (5)**, in §9.3's CI-blocking shape: `tier === 'C1'` requires a resolvable alum record, which makes an unprovenanced C1 unconstructible rather than merely unrewarded.
 
@@ -300,9 +292,7 @@ Specified 2026-10-02 (B-04), extended 2026-10-09 with rule 8 and §10.5, 2026-10
 
 One user is a small sample, and that fact has to come before the choice of metrics rather than after it. To detect a change in a rate at conventional 80% power and α = 0.05 (two-sided two-proportion test), the events needed in *each* arm are **435** for an application→response move of 5% → 10%, **141** for 5% → 15%, and **58** for an outreach→reply move of 25% → 50%. Computed, not sourced — the standard normal-approximation two-proportion formula; the script is in the 2026-10-02 brief, so the numbers can be rechecked rather than trusted.
 
-A job seeker does not send 282 applications in a season, and if she did, the season would end before the comparison resolved. **Hoshi cannot A/B test its own application funnel for a single user. Not slowly — not at all.** Any dashboard that implies otherwise is misreporting its sample size, and that is the specific failure this section exists to prevent.
-
-What one user *can* measure is a rate with a high base. §1 puts the warm path at 40–65% against 2–8% cold; a base rate an order of magnitude higher needs roughly an order of magnitude fewer events for the same relative change. That is the difference between impossible and by December — and it is a second, independent reason the metric set leans toward conversations, on top of §1: conversations are the only stretch of the funnel where one person's numbers ever mean anything.
+A job seeker does not send 282 applications in a season, and if she did, the season would end before the comparison resolved. **Hoshi cannot A/B test its own application funnel for a single user. Not slowly — not at all.** Any dashboard that implies otherwise is misreporting its sample size, and that is the specific failure this section exists to prevent. What one user *can* measure is a rate with a high base, which is a second and independent reason the metric set leans toward conversations on top of §1: the warm path runs an order of magnitude above the cold one, so the same relative change needs an order of magnitude fewer events — the 58 above against the 435.
 
 ### 10.2 Metric set
 
@@ -373,6 +363,16 @@ type HoshiEvent = { at: ISODate } & (
 
 ---
 
+## 11. The answer bank
+
+Added 2026-10-22. §4 lists the answer bank as unspecified and the generation backend as absent, so free-text answers "cannot run" — but the part of them that needs no model is recall. The bank stores **answers the user wrote or edited**, never model output she never saw, which makes it buildable in the local-only mode Q2 may make permanent (B-08), unlike the cover letters and free-text generation listed beside it. Each stored answer records the question as the form asked it, the application it was first written for, its `scope`, and `editedAt`. `[assumption]` that free-text questions are where the remaining per-application minutes go now that autofill covers the structured fields (§4): §10.2's median-time metric is what would retire that tag, and the category's form-abandonment statistics do not — B-19 records which ones were read and why they were refused.
+
+**Scope decides whether an answer may be filled at all, and a competitor's own documentation is why that needs saying.** Simplify saves custom answers — *"The fields below are automatically saved in this browser only"* — and then *"we'll automatically fill in inputs with corresponding labels using these values"*, which is label matching with no company scoping documented; with its AI setting on, *"Copilot will attempt to autofill unique questions using your profile"* ([Simplify help](https://help.simplify.jobs/article/18-saving-custom-questions) and [autofill settings](https://help.simplify.jobs/articles/8686025-manage-autofill-settings-in-the-simplify-extension)). The second is the inference Principle 2 forbids, and Hoshi does not do it with a backend or without one. The first is the trap that earns a rule: an answer to *"why do you want to work here"* is stable in form and false the moment it changes company, and a stale specific is worse than a generic one. So every answer carries `scope: 'employer-independent' | 'employer-specific'`. Employer-independent answers — work authorization, graduation date, notice period — are facts stated once and may be written to a field verbatim. Employer-specific answers are **offered as a seed and never written to a field**: **invariant (7)**, in §9.3's CI-blocking shape, is that no field may be filled from an `employer-specific` answer unless its `editedAt` is later than the application it was written for, and that no answer naming a company other than this application's may be filled in either scope — a refusal read off the user's own stored text, not a name extracted from it. (Review-before-submit is not the difference here: Simplify's docs say *"You still review the completed application and click the final Submit button yourself"* too. Scoping is.)
+
+**An unrecognised question fills nothing, and the protected group has no key here either.** A question the bank cannot match produces no fill and names the question it skipped (Principle 5); there is no nearest-match, because a question that merely resembles a stored one is the same guess §8.7 refuses for board handles. The bank is also where Principle 3 could leak: Simplify's autofill settings list *"Disability"* among the fields its extension can write, without saying whether that is on by default (`[assumption]` on the default; the field's presence is not in doubt). Hoshi's protected-fields group is left deliberately blank by autofill (§4), and a bank that remembered the answer would be the back door around the one principle with a walk test behind it — so **invariant (8)**: the answer bank's schema has no key for race, gender, disability or veteran status, enforced by the same test Principle 3 puts on the profile. Work authorization is not in that group and is the employer-independent case that matters most to this user: her stated fact, reused verbatim, answered the same way every time. Whether sponsorship becomes a scoring term rather than an eligibility gate is **Q4**, and nothing here touches it.
+
+---
+
 ## Sources
 
 - [Do Job Referrals Actually Work? Data Behind Response Rates — refer.me](https://www.refer.me/blog/do-job-referrals-actually-work-data-behind-response-rates)
@@ -391,6 +391,7 @@ type HoshiEvent = { at: ISODate } & (
 - [chrome.storage reference — QUOTA_BYTES and unlimitedStorage](https://developer.chrome.com/docs/extensions/mv2/reference/storage)
 - [Extension service worker lifecycle — idle timeout, 5-minute task ceiling, 30-second fetch ceiling](https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle)
 - [chrome.alarms reference — the 0.5-minute minimum period](https://developer.chrome.com/docs/extensions/mv2/reference/alarms)
+- Simplify's own help docs, cited for its documented behaviour rather than its advice: [saving custom questions](https://help.simplify.jobs/article/18-saving-custom-questions) · [autofill settings](https://help.simplify.jobs/articles/8686025-manage-autofill-settings-in-the-simplify-extension)
 - [Greenhouse Job Board API](https://docs.greenhouse.io/job-board.html)
 - [Embed a Greenhouse job board on your career site — Greenhouse support](https://support.greenhouse.io/hc/en-us/articles/46365908766875-Embed-a-Greenhouse-job-board-on-your-career-site)
 - [Lever Postings API](https://github.com/lever/postings-api/blob/master/README.md)

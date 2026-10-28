@@ -1,0 +1,19 @@
+name: Hoshi checks
+on:
+  push:
+    branches: [master, "feature/**"]
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: npm run check
+      - name: Tests
+        run: npm test
+      - name: Check extension manifest
+        run: node -e "const fs=require('fs');const m=require('./manifest.json');if(m.manifest_version!==3||!fs.existsSync(m.side_panel.default_path))process.exit(1)"

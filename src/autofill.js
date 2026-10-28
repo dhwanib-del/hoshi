@@ -1,13 +1,10 @@
-// Hoshi never submits. Every proposal is reviewed by the user before filling.
-// This module executes only after explicit user interaction on an ATS host.
-function trustedHost(){
- const host=location.hostname;
- const suffixes=['job-boards.greenhouse.io','boards.greenhouse.io','jobs.lever.co','jobs.ashbyhq.com','myworkdayjobs.com','smartrecruiters.com','icims.com','workable.com','jobvite.com'];
- return suffixes.some(x=>host===x||host.endsWith('.'+x));
-}
-const protectedField=text=>/\b(race|ethnicity|gender|sex|disability|veteran|birth.?date|date.?of.?birth|sexual.?orientation|religion)\b/i.test(text);
+// Each injected function contains its own host and protected-field guard; Chrome serializes the function only.
 export function inspectFields(){
- if(!trustedHost())return {error:'Outside supported ATS host',fields:[]};
+ const host=location.hostname;
+ const allowed=['job-boards.greenhouse.io','boards.greenhouse.io','jobs.lever.co','jobs.ashbyhq.com','myworkdayjobs.com','smartrecruiters.com','icims.com','workable.com','jobvite.com'];
+ const trusted=allowed.some(x=>host===x||host.endsWith('.'+x));
+ const protectedField=text=>/\b(race|ethnicity|gender|sex|disability|veteran|birth.?date|date.?of.?birth|sexual.?orientation|religion)\b/i.test(text);
+ if(!trusted)return {error:'Outside supported ATS host',fields:[]};
  const fields=[];
  for(const input of [...document.querySelectorAll('input[type="text"],input[type="email"],input[type="tel"],textarea')].slice(0,120)){
   if(!input.offsetParent||input.disabled||input.readOnly)continue;
@@ -22,7 +19,11 @@ export function inspectFields(){
  return {fields};
 }
 export function fillReviewed(pairs){
- if(!trustedHost())return {filled:0,errors:['Unsupported ATS host']};
+ const host=location.hostname;
+ const allowed=['job-boards.greenhouse.io','boards.greenhouse.io','jobs.lever.co','jobs.ashbyhq.com','myworkdayjobs.com','smartrecruiters.com','icims.com','workable.com','jobvite.com'];
+ const trusted=allowed.some(x=>host===x||host.endsWith('.'+x));
+ const protectedField=text=>/\b(race|ethnicity|gender|sex|disability|veteran|birth.?date|date.?of.?birth|sexual.?orientation|religion)\b/i.test(text);
+ if(!trusted)return {filled:0,errors:['Unsupported ATS host']};
  let filled=0;const errors=[];
  for(const p of pairs){
   if(!p.approved||protectedField(p.label))continue;

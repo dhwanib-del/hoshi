@@ -57,6 +57,7 @@ function activityView(){
  const a=activity(state);
  return '<div class="eyebrow">Momentum, not vanity</div><h1>What actually happened.</h1><p class="section-intro">These are the events you marked in Hoshi, not a claim about every application or conversation you have ever had.</p>'+
  '<div class="stats">'+[['Conversations started',a.counts.outreach],['Replies you recorded',a.counts.replies],['Marked submitted',a.counts.submissions],['Interviews recorded',a.counts.interviews]].map(([name,num])=>'<div class="stat"><strong>'+num+'</strong><small>'+name+'</small></div>').join('')+'</div>'+
+ '<div class="card" style="margin-top:10px"><strong>'+state.jobs.filter(j=>j.origin==='google-sheets-csv'&&['Applied','Rejected','Interview','Assessment','Offer'].includes(j.sheetStatus)).length+' applications imported from CSV</strong><p class="micro muted">External snapshot only. These are not counted as Hoshi-observed submissions or used in rates.</p></div>'+
  sec('Rates are estimates','95% Wilson interval')+
  a.rates.map(r=>'<div class="rate"><strong>'+esc(r.summary)+'</strong><small>'+esc(r.label)+'. Based only on events you recorded.</small></div>').join('')+
  '<div class="card" style="margin-top:10px"><strong>'+a.immature+' applications too recent</strong><p class="micro muted">Submissions younger than 21 days stay out of response-rate denominators. Missing replies and unconfirmed external submissions are not observed.</p></div>'+

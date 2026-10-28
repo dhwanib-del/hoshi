@@ -18,7 +18,7 @@ function jobCard(job,score){
  const stage=jobStage(state.events,job.id);
  const tag=job.listingState==='closed'?badge('Closed','bad'):job.listingState==='live'?badge('Live board','good'):badge('Listing unknown','warn');
  return '<article class="card"><div class="row"><div class="card-body"><p class="card-title">'+esc(job.title)+'</p><div class="micro muted">'+esc(job.company)+' · '+esc(job.location||'Location not verified')+'</div></div><div class="score">'+score.total+'<small>/ 100</small></div></div>'+
- '<div class="tags">'+tag+badge(stage,stage==='rejected'?'bad':stage==='interview'?'good':'')+badge(score.tier+' connection')+(job.authorization==='not-sponsored'?badge('No sponsorship','bad'):job.authorization!=='confirmed'?badge('Sponsorship unverified','warn'):'')+'</div>'+
+ '<div class="tags">'+tag+badge(stage,stage==='rejected'?'bad':stage==='interview'?'good':'')+(job.sheetStatus?badge('Sheet: '+job.sheetStatus,'warn'):'')+badge(score.tier+' connection')+(job.authorization==='not-sponsored'?badge('No sponsorship','bad'):job.authorization!=='confirmed'?badge('Sponsorship unverified','warn'):'')+'</div>'+
  '<p class="why">'+esc(score.reason)+(score.contact?' · Person: '+esc(score.contact.name):'')+'</p>'+
  '<details class="disclosure"><summary>Why this score?</summary><ul class="line-list">'+score.lines.map(l=>'<li>'+esc(l)+'</li>').join('')+'</ul><small class="muted">Score is not a hiring probability. No eligibility inferred from silence.</small></details>'+
  '<div class="action-row">'+(job.applyUrl?button('View job ↗','open-job',job.id):'')+button('Verify role','verify-job',job.id)+button('Review form','preview-fill',job.id)+button('Mark I applied','submit',job.id)+button('Update outcome','outcome',job.id,'ghost')+'</div></article>';

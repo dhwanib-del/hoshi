@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Hoshi — people first job search",
+  "version": "0.1.0",
+  "description": "Find the job. Find the person. Make the conversation count.",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "sidePanel",
+    "alarms"
+  ],
+  "optional_host_permissions": [
+    "https://boards-api.greenhouse.io/*",
+    "https://api.lever.co/*",
+    "https://api.ashbyhq.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "src/panel.html"
+  },
+  "action": {
+    "default_title": "Open Hoshi"
+  }
+}

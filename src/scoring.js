@@ -4,7 +4,11 @@ export const WEIGHTS=Object.freeze({role:25,eligibility:20,connection:20,experie
 export const POINTS=Object.freeze({C3:20,C2:14,C1:8,C0:0});
 const lower=s=>String(s||'').toLowerCase();
 export function tierFor(company,people,events,now=new Date()){
- const matches=people.filter(p=>lower(p.currentEmployer||p.company)===lower(company)&&p.name&&p.origin);
+ const matches=people.filter(p=>{
+  if(!p.name||!p.origin)return false;
+  if(p.origin==='user-imported CareerLink CSV'&&!['Verified current','Changed employer','Verified public profile'].includes(p.employerCheck))return false;
+  return lower(p.currentEmployer||p.company)===lower(company);
+ });
  let best={tier:'C0',contact:null,reason:'Nobody found at this company'};
  for(const p of matches){
   const replies=events.filter(e=>e.kind==='reply'&&e.contactId===p.id);

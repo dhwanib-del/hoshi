@@ -21,7 +21,7 @@ function jobCard(job,score){
  '<div class="tags">'+tag+badge(stage,stage==='rejected'?'bad':stage==='interview'?'good':'')+badge(score.tier+' connection')+(job.authorization==='not-sponsored'?badge('No sponsorship','bad'):job.authorization!=='confirmed'?badge('Sponsorship unverified','warn'):'')+'</div>'+
  '<p class="why">'+esc(score.reason)+(score.contact?' · Person: '+esc(score.contact.name):'')+'</p>'+
  '<details class="disclosure"><summary>Why this score?</summary><ul class="line-list">'+score.lines.map(l=>'<li>'+esc(l)+'</li>').join('')+'</ul><small class="muted">Score is not a hiring probability. No eligibility inferred from silence.</small></details>'+
- '<div class="action-row">'+(job.applyUrl?button('View job ↗','open-job',job.id):'')+button('Review form','preview-fill',job.id)+button('Mark I applied','submit',job.id)+button('Update outcome','outcome',job.id,'ghost')+'</div></article>';
+ '<div class="action-row">'+(job.applyUrl?button('View job ↗','open-job',job.id):'')+button('Verify role','verify-job',job.id)+button('Review form','preview-fill',job.id)+button('Mark I applied','submit',job.id)+button('Update outcome','outcome',job.id,'ghost')+'</div></article>';
 }
 function orbit(){
  const brief=morningBrief(state);const s=stardust(state.events);
@@ -93,6 +93,16 @@ view.addEventListener('click',async e=>{
  if(action==='show-add-person'){tab='people';subview=null;render();document.querySelector('#person-name')?.focus();return}
  if(action==='back-jobs'){subview=null;review=null;tab='jobs';render();return}
  if(action==='preview-fill'){review=await request('PREVIEW_FILL',{jobId:id});subview='review';render();return}
+ if(action==='verify-job'){
+  const job=state.jobs.find(j=>j.id===id);if(!job)return;
+  const eligibility=prompt('Graduation and experience eligibility: eligible / ineligible / unverified',job.eligibility||'unverified');
+  if(!eligibility)return;
+  const authorization=prompt('Sponsorship policy: confirmed / not-sponsored / unverified',job.authorization||'unverified');
+  if(!authorization)return;
+  const evidence=prompt('Source or note supporting this decision (do not guess):',job.applyUrl||'');
+  await request('VERIFY_JOB',{jobId:id,eligibility:eligibility.trim(),authorization:authorization.trim(),evidence:evidence||''});
+  notice('Role facts updated from your review');await refresh();return;
+ }
  if(action==='capture'){
   const result=await request('CAPTURE');
   if(result.needsCompany){const name=prompt('The page did not provide a verified company. Enter it yourself:');if(!name)return;await request('ADD_JOB',{...result.captured,company:name})}

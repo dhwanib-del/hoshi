@@ -22,6 +22,7 @@ function jobCard(job,score){
  '<p class="why">'+esc(score.reason)+(score.contact?' · Person: '+esc(score.contact.name):'')+'</p>'+
  '<details class="disclosure"><summary>Why this score?</summary><ul class="line-list">'+score.lines.map(l=>'<li>'+esc(l)+'</li>').join('')+'</ul><small class="muted">Score is not a hiring probability. No eligibility inferred from silence.</small></details>'+
  '<div class="action-row">'+(job.applyUrl?button('View job ↗','open-job',job.id):'')+button('Review form','preview-fill',job.id)+button('Mark I applied','submit',job.id)+button('Update outcome','outcome',job.id,'ghost')+'</div></article>';
+}
 function orbit(){
  const brief=morningBrief(state);const s=stardust(state.events);
  return '<div class="hero"><div class="eyebrow">Your daily orbit</div><h1>Good things start with a conversation.</h1><p>Find the person. Find the role. Make the introduction count.</p><span class="stardust">✦ '+s+' stardust today</span></div>'+

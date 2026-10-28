@@ -21,7 +21,14 @@ async function getCurrentTab(){
 async function handle(message){
  const data=message?.data||{};
  switch(message?.type){
-  case 'GET': return load();
+  case 'GET': return mutator(s=>{
+   const day=new Date().toISOString().slice(0,10);
+   if(s.lastBriefDate===day)return s;
+   const brief=morningBrief(s);
+   const recorded=appendEvent(s,{kind:'brief',conversations:brief.conversations.map(x=>({contactId:x.contact.id,why:x.why})),
+     promoted:brief.promoted.map((x,i)=>({jobId:x.job.id,rank:i+1,totalScore:x.score.total,roleFit:x.score.roleFit,tier:x.score.tier}))});
+   return {...recorded,lastBriefDate:day};
+  });
   case 'PROFILE':return mutator(s=>({...s,profile:{...s.profile,...safeProfile(data)}}));
   case 'ADD_PERSON':return mutator(s=>{
    if(!data.name?.trim())throw Error('Name required');

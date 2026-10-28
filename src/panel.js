@@ -1,7 +1,7 @@
 import {morningBrief,scoreJob,activity} from './scoring.js';
 import {stardust,jobStage,cleanText} from './model.js';
 import {parseBoardUrl,PROVIDERS} from './discovery.js';
-let state=null,tab='orbit',search='',jobFilter='all',subview=null;
+let state=null,tab='orbit',search='',jobFilter='all',subview=null,review=null;
 const view=document.querySelector('#view'),toast=document.querySelector('#toast');
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const date=x=>x?new Date(x).toLocaleDateString(undefined,{month:'short',day:'numeric'}):'Not recorded';
@@ -21,7 +21,7 @@ function jobCard(job,score){
  '<div class="tags">'+tag+badge(stage,stage==='rejected'?'bad':stage==='interview'?'good':'')+badge(score.tier+' connection')+(job.authorization==='not-sponsored'?badge('No sponsorship','bad'):job.authorization!=='confirmed'?badge('Sponsorship unverified','warn'):'')+'</div>'+
  '<p class="why">'+esc(score.reason)+(score.contact?' · Person: '+esc(score.contact.name):'')+'</p>'+
  '<details class="disclosure"><summary>Why this score?</summary><ul class="line-list">'+score.lines.map(l=>'<li>'+esc(l)+'</li>').join('')+'</ul><small class="muted">Score is not a hiring probability. No eligibility inferred from silence.</small></details>'+
- '<div class="action-row">'+(job.applyUrl?button('View job ↗','open-job',job.id):'')+button('Mark I applied','submit',job.id)+button('Update outcome','outcome',job.id,'ghost')+'</div></article>';
+ '<div class="action-row">'+(job.applyUrl?button('View job ↗','open-job',job.id):'')+button('Review form','preview-fill',job.id)+button('Mark I applied','submit',job.id)+button('Update outcome','outcome',job.id,'ghost')+'</div></article>';
 function orbit(){
  const brief=morningBrief(state);const s=stardust(state.events);
  return '<div class="hero"><div class="eyebrow">Your daily orbit</div><h1>Good things start with a conversation.</h1><p>Find the person. Find the role. Make the introduction count.</p><span class="stardust">✦ '+s+' stardust today</span></div>'+
@@ -69,9 +69,16 @@ function settings(){
  '<div class="form-card"><h3>Your data stays yours</h3><p class="micro muted">No server. No automatic submissions. No LinkedIn scraping. Dates and sources remain visible. Export your local records whenever you like.</p>'+button('Export backup JSON','export')+'</div>'+
  '<div class="form-card"><h3>Saved answer bank</h3><p class="micro muted">Only answers you write are stored. Protected demographic questions are never saved.</p><form id="answer-form"><label>Exact question</label><input name="question" required><label>Your answer</label><textarea name="answer" required></textarea><label>Scope</label><select name="scope"><option value="employer-independent">Employer-independent</option><option value="employer-specific">Employer-specific</option></select><label>Company (if specific)</label><input name="company"><button class="btn full" type="submit">Save my answer</button></form><p class="micro muted">'+state.answers.length+' answers saved locally.</p></div>';
 }
+function reviewView(){
+ const items=review?.proposals||[];
+ return '<div class="eyebrow">Review before filling</div><h1>Only what you wrote.</h1><p class="section-intro">Hoshi offers exact matches from your saved answer bank. Protected questions are skipped. It never clicks Submit.</p>'+
+ '<div class="card">'+badge(items.filter(x=>x.fill).length+' eligible fields','good')+' '+badge((review?.skipped||0)+' unmatched questions','warn')+'</div>'+
+ (items.length?'<form class="form-card" id="fill-form">'+items.map((x,i)=>'<label class="card" style="display:block;margin-bottom:10px"><div class="row"><input type="checkbox" name="field" value="'+i+'" '+(x.fill?'':'disabled')+' style="flex:0;width:20px;min-height:20px"><strong>'+esc(x.label)+'</strong></div><p class="micro muted">'+esc(x.answer)+'</p><small>'+esc(x.why)+'</small></label>').join('')+'<button class="btn full" type="submit">Fill selected fields (never submit)</button></form>':empty('🖊','No exact matches','Save answers in Settings. Hoshi does not guess what belongs in a form.'))+
+ '<div class="action-row">'+button('← Back to Jobs','back-jobs')+'</div>';
+}
 function render(){
  const active=subview||tab;
- view.innerHTML=active==='orbit'?orbit():active==='jobs'?jobs():active==='people'?people():active==='activity'?activityView():settings();
+ view.innerHTML=active==='review'?reviewView():active==='orbit'?orbit():active==='jobs'?jobs():active==='people'?people():active==='activity'?activityView():settings();
  document.querySelectorAll('.bottom-nav button').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
 }
 document.querySelector('.bottom-nav').addEventListener('click',e=>{const btn=e.target.closest('[data-tab]');if(!btn)return;tab=btn.dataset.tab;subview=null;render();scrollTo(0,0)});
@@ -83,6 +90,8 @@ view.addEventListener('click',async e=>{
  const action=b.dataset.action,id=b.dataset.id;
  try{
  if(action==='show-add-person'){tab='people';subview=null;render();document.querySelector('#person-name')?.focus();return}
+ if(action==='back-jobs'){subview=null;review=null;tab='jobs';render();return}
+ if(action==='preview-fill'){review=await request('PREVIEW_FILL',{jobId:id});subview='review';render();return}
  if(action==='capture'){
   const result=await request('CAPTURE');
   if(result.needsCompany){const name=prompt('The page did not provide a verified company. Enter it yourself:');if(!name)return;await request('ADD_JOB',{...result.captured,company:name})}
@@ -105,7 +114,14 @@ view.addEventListener('click',async e=>{
 view.addEventListener('submit',async e=>{
  e.preventDefault();const form=e.target;const values=Object.fromEntries(new FormData(form).entries());
  try{
- if(form.id==='person-form'){await request('ADD_PERSON',values);notice('Person added');subview=null;tab='people';await refresh();}
+ if(form.id==='fill-form'){
+   const selected=new Set([...new FormData(form).getAll('field')].map(Number));
+   const fields=review.proposals.map((p,i)=>({selector:p.selector,label:p.label,answerId:p.answerId,approved:selected.has(i)}));
+   if(!selected.size)throw Error('Choose at least one exact-match answer');
+   const result=await request('FILL_APPROVED',{jobId:review.jobId,fields});
+   notice(result.filled+' fields filled. Review them on the employer page; submit yourself.');
+   subview=null;review=null;tab='jobs';render();
+ } else if(form.id==='person-form'){await request('ADD_PERSON',values);notice('Person added');subview=null;tab='people';await refresh();}
  else if(form.id==='job-form'){await request('ADD_JOB',{...values,origin:'manual',listingState:'unknown'});notice('Job saved');await refresh();}
  else if(form.id==='board-form'){const source=parseBoardUrl(values.boardUrl);if(!source)throw Error('Paste a supported, hosted ATS board URL');
    const permission=await chrome.permissions.request({origins:[PROVIDERS[source.provider].host]});

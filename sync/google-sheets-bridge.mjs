@@ -9,10 +9,10 @@ const slug = x => norm(x).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|
 export function objectsFromValues(values = []) {
   if (!Array.isArray(values) || !values.length) return [];
   const [headers, ...rows] = values;
-  return rows.filter(row => row?.some(v => norm(v))).map((row, i) => ({
+  return rows.map((row, i) => row?.some(v => norm(v)) ? ({
     __sheetRow: i + 2,
     ...Object.fromEntries(headers.map((header, j) => [norm(header), norm(row?.[j])]))
-  }));
+  }) : null).filter(Boolean);
 }
 export function asISODate(value) {
   const s = norm(value);
@@ -58,7 +58,8 @@ export function convertContacts(values) {
     const employerCheck = r['Employer Check'] || 'Not checked';
     const checked = ['Verified current','Changed employer','Verified public profile'].includes(employerCheck);
     contacts.push({
-      source:'google-sheets', sheetRow:r.__sheetRow, id:'contact:'+r.__sheetRow,
+      source:'google-sheets', sheetRow:r.__sheetRow,
+      id:'contact:'+(r['LinkedIn URL'] ? 'linkedin:'+slug(r['LinkedIn URL']) : r.Email ? 'email:'+slug(r.Email) : 'name:'+slug(r.Name)+':'+slug(r['Company in CareerLink'])),
       name:r.Name, directoryEmployer:r['Company in CareerLink'] || null,
       currentEmployer:checked ? (r['Current Employer'] || null) : null,
       reportedEmployer:r['Current Employer'] || null, employerCheck,

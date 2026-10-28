@@ -1,6 +1,7 @@
-import {KEY,DEFAULTS,stateFrom,asId,addJob,appendEvent,mayMarkApplied,markOutcome,saveAnswer,safeProfile} from './model.js';
+import {KEY,DEFAULTS,stateFrom,asId,addJob,appendEvent,mayMarkApplied,markOutcome,saveAnswer,safeProfile,usableAnswer} from './model.js';
 import {listJobs,applyBoardResult} from './discovery.js';
 import {captureCurrentPage} from './capture.js';
+import {inspectFields,fillReviewed} from './autofill.js';
 import {scoreJob,morningBrief} from './scoring.js';
 let serial=Promise.resolve();
 const load=async()=>stateFrom((await chrome.storage.local.get(KEY))[KEY]);
@@ -88,6 +89,39 @@ async function handle(message){
    }
    return next;
   });
+  case 'PREVIEW_FILL':{
+   const job=(await load()).jobs.find(j=>j.id===data.jobId);
+   if(!job)throw Error('Save this job before reviewing form fields');
+   const tab=await getCurrentTab();
+   if(!job.applyUrl||new URL(job.applyUrl).origin!==new URL(tab.url).origin)throw Error('Open the saved job on the same employer site');
+   const [result]=await chrome.scripting.executeScript({target:{tabId:tab.id},func:inspectFields});
+   if(result?.result?.error)throw Error(result.result.error);
+   const state=await load();
+   const proposals=[];
+   for(const field of result?.result?.fields||[]){
+    const answer=[...state.answers].reverse().find(a=>a.question.toLowerCase()===field.label.toLowerCase());
+    if(!answer)continue;
+    const checked=usableAnswer(answer,{question:field.label,company:job.company,applicationCreatedAt:job.createdAt});
+    proposals.push({selector:field.selector,label:field.label,answerId:answer.id,answer:answer.answer,fill:checked.fill,why:checked.why||'Exact saved answer',origin:'user-authored answer'});
+   }
+   return {jobId:job.id,proposals,skipped:(result?.result?.fields||[]).length-proposals.length};
+  }
+  case 'FILL_APPROVED':{
+   const state=await load(),job=state.jobs.find(j=>j.id===data.jobId);
+   if(!job)throw Error('Job missing');
+   const tab=await getCurrentTab();
+   if(!job.applyUrl||new URL(job.applyUrl).origin!==new URL(tab.url).origin)throw Error('Wrong employer page; no changes made');
+   const pairs=[];
+   for(const p of data.fields||[]){
+    const answer=state.answers.find(a=>a.id===p.answerId&&a.question.toLowerCase()===String(p.label).toLowerCase());
+    if(!answer)continue;
+    const usable=usableAnswer(answer,{question:p.label,company:job.company,applicationCreatedAt:job.createdAt});
+    if(usable.fill&&p.approved===true)pairs.push({selector:p.selector,label:p.label,answer:usable.value,approved:true});
+   }
+   if(!pairs.length)return {filled:0,errors:['No eligible fields approved']};
+   const [filled]=await chrome.scripting.executeScript({target:{tabId:tab.id},func:fillReviewed,args:[pairs]});
+   return filled?.result||{filled:0,errors:['No result']};
+  }
   case 'CLEAR_ALL':throw Error('Hoshi does not wipe your records from a single click');
   default:throw Error('Unknown Hoshi operation');
  }

@@ -41,11 +41,11 @@ export function scoreJob(job,profile,people=[],events=[],now=new Date()){
  const location=job.locationMatch===true?5:0;
  const total=roleFit+eligibility+POINTS[tier.tier]+experience+company+narrative+location+authorization+fresh.points;
  const disqualified=job.eligibility==='ineligible'||job.authorization==='not-sponsored'||job.listingState==='closed';
- const qualified=!disqualified&&roleFit>=15;
+ const qualified=!disqualified&&roleFit>=15&&job.eligibility==='eligible'&&job.authorization==='confirmed';
  const threshold=profile.priorityThreshold??70;
  const promoted=qualified&&(total>=threshold||tier.tier!=='C0');
  return {total,roleFit,tier:tier.tier,contact:tier.contact,promoted,qualified,
-  reason:disqualified?'Ineligible, cannot sponsor, or closed':roleFit<15?'Below 15/25 role-fit floor':!promoted?'Below priority threshold':'Qualified',
+  reason:disqualified?'Ineligible, cannot sponsor, or closed':roleFit<15?'Below 15/25 role-fit floor':!qualified?'Verify graduation eligibility and sponsorship':!promoted?'Below priority threshold':'Qualified',
   lines:['+'+roleFit+' role · '+(direct?'matches your saved role lane':partial?'adjacent role':'not matched'),
     '+'+eligibility+' eligibility · '+(job.eligibility||'not verified'),
     '+'+POINTS[tier.tier]+' connection · '+tier.reason,

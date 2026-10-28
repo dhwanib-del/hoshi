@@ -1,0 +1,10 @@
+{
+  "name": "hoshi",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs sync/*.test.mjs",
+    "check": "node --check src/model.js && node --check src/scoring.js && node --check src/discovery.js && node --check src/background.js && node --check src/panel.js && node --check src/capture.js"
+  }
+}

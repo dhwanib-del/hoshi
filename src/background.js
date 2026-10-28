@@ -33,6 +33,11 @@ async function handle(message){
    return {...s,people:[...s.people,person]};
   });
   case 'ADD_JOB':return mutator(s=>addJob(s,{...data,origin:data.origin||'manual'}));
+  case 'VERIFY_JOB':return mutator(s=>{
+   if(!['eligible','ineligible','unverified'].includes(data.eligibility)||!['confirmed','not-sponsored','unverified'].includes(data.authorization))throw Error('Unrecognized eligibility or sponsorship answer');
+   const job=s.jobs.find(j=>j.id===data.jobId);if(!job)throw Error('Job not found');
+   return {...s,jobs:s.jobs.map(j=>j.id!==job.id?j:{...j,eligibility:data.eligibility,authorization:data.authorization,eligibilityEvidence:String(data.evidence||'User verified from employer posting').slice(0,240),eligibilityReviewedAt:new Date().toISOString()})};
+  });
   case 'ADD_BOARD':return mutator(s=>{
    if(!data.company||!data.handle||!['greenhouse','lever','ashby'].includes(data.provider))throw Error('Paste a supported board URL and company name');
    if(s.boards.some(b=>b.provider===data.provider&&b.handle===data.handle))return s;

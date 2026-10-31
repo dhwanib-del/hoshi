@@ -1,6 +1,6 @@
 # Hoshi — Product Requirements
 
-**Living document.** Improved daily by the Hoshi Loop. Last substantive revision: 2026-10-30.
+**Living document.** Improved daily by the Hoshi Loop. Last substantive revision: 2026-10-31.
 
 ---
 
@@ -248,6 +248,8 @@ Connection is tiered by the action available to the user today, not by an inferr
 
 **C1 therefore adds ordering, not reach.** §8.1 seeds the watchlist from companies where a ranked alum or saved contact works, so every company that can produce a C1 is already a watched company: §7.2's `tier ≥ C1` promotion clause is not a second route into the brief, only a second reason a job at a company already on the list clears it. That is narrower than §7.2 reads as claiming, and it is the honest version — C1 cannot surface an employer the user has no path to, and a tier that could would be the inferred-closeness guess the top of this section refuses.
 
+**The employer on a person record is undated, and it is the fact every tier rests on.** Added 2026-10-31. Every person in Hoshi got there because the user put them there, so the company on that record is something she typed — and the company is what the whole connection term runs on: §8.1 seeds the watchlist from it, every tier above is *at the company*, and §9.1 awards up to 20 points for it. It is also the one field in the record that becomes false while nobody touches it, and not slowly: median tenure for workers aged 25–34, which is the cohort a UMSI alum list is made of, is **3.0 years** ([BLS, January 2026](https://www.bls.gov/news.release/tenure.nr0.htm)). **The category gets that date for free by reading the page Hoshi refuses.** Teal's contact tracker is filled by its extension — *"Navigate to a connection's profile … Click 'save contact' to add to your Contact Tracker"* — and a contact's work history is *"imported directly from LinkedIn via our Chrome extension"* ([getting started](https://help.tealhq.com/en/articles/9509581-getting-started-contact-tracker) · [networking CRM](https://www.tealhq.com/tool/networking-crm), the vendor describing its own product, so `[assumption]` past what it claims to do), while Huntr's contacts are typed into a form and its docs describe no import at all ([Huntr](https://help.huntr.co/en/articles/10089169-contacts-and-documents)). That route is refused here three times over: Principle 4 registers content scripts against granted job-site hosts only, §8.2 gives LinkedIn no adapter, and §8.2's risk judgment is that the account the user's network lives on is the worst one to spend. **So the record carries `employerAsOf`** — the date the user last asserted the employer, `null` if she never did — and it is **never inferred from `origin.at`**, because a list exported today can carry a job she last confirmed three years ago. **Invariant (10)**, in §9.3's CI-blocking shape: `tier === 'C1'` requires `employerAsOf !== null`. C2 and C3 do not, because each rests on something the user did herself — she saved the contact, or they replied — while C1 is the one tier Hoshi asserts on her behalf, which is exactly where an undated employer goes unchallenged. There is no cap and no decay on this date: §9.5 caps a mutable posting date because the band claims a share of a pool, whereas this claim is about one person, so the honest move is to print the date and let her judge it (§9.4's third line).
+
 **Decay.** A C2 with no reply after 21 days degrades to C1: an unanswered message is information about the path, and the score should stop claiming a warmth that did not materialise. C3 never decays — the reply already happened. `[assumption]` the 21 days. Because the tier therefore changes without the user doing anything, it cannot be read back from current state when measuring (§10.3 rule 8, §10.5). **Both ends of that clock are read from the log, not from a flag.** Added 2026-10-21: C3 requires a `reply` or `refer-offered` row for that contact — **invariant (6)**, in §9.3's CI-blocking shape — and *no reply after 21 days* means no such row within 21 days of the thread's `outreach` row (§10.5). The largest award in the tier table was otherwise a boolean the user could set and clear, which is the one thing §9.4's naming rule cannot catch: Hoshi can name the person correctly and still be wrong about what they did.
 
 ### 9.3 Two invariants
@@ -264,7 +266,7 @@ Under Principle 6 the connection term must name its evidence, in the line the us
 ```
 +20 · Priya Raman — UMSI '23, Design Systems, replied 12 Sep
 +14 · Marcus Lee — UMSI '21, no reply yet (sent 4 Sep)
- +8 · Dana Patel, UMSI '20 — from your ranked alum list, not yet saved
+ +8 · Dana Patel, UMSI '20 — your ranked alum list, not saved, employer last confirmed Mar 2025
  +0 · nobody found at this company
 ```
 

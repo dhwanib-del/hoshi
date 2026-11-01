@@ -1,6 +1,6 @@
 # Hoshi — Product Requirements
 
-**Living document.** Improved daily by the Hoshi Loop. Last substantive revision: 2026-10-31.
+**Living document.** Improved daily by the Hoshi Loop. Last substantive revision: 2026-11-01.
 
 ---
 
@@ -161,17 +161,9 @@ interface AdapterResult {
 
 Every adapter emits the same `ExtractedJob` shape that `extractJob` produces from a live page, so one normaliser serves both paths and downstream code cannot tell where a job came from except by reading its provenance.
 
-| `ExtractedJob` field | Greenhouse | Lever | Ashby |
-| --- | --- | --- | --- |
-| `title` | `title` | `text` | `title` |
-| `location` | `location.name` | `categories.location` | `location` |
-| `applyUrl` | `absolute_url` | `applyUrl` | apply URL |
-| `descriptionHtml` | `content` (needs `content=true`) | description variants | HTML description |
-| `providerJobId` | `id` | `id` | posting id |
-| `employmentType` | — | `categories.commitment` | employment type |
-| `workplaceType` | — | `workplaceType` | workplace type |
+Seven fields carry across — `title`, `location`, `applyUrl`, `descriptionHtml`, `providerJobId`, `employmentType`, `workplaceType` — and only two providers' key names for them are known. Greenhouse spells them `title`, `location.name`, `absolute_url`, `content` (returned only with `content=true`) and `id`, and exposes neither employment nor workplace type; Lever spells them `text`, `categories.location`, `applyUrl`, `id`, `categories.commitment` and `workplaceType`, with its description in several variants. **No source this loop has read gives Ashby's spellings** — §9.2's reading of that endpoint names the fields it carries, not the keys that carry them. Every name here is read off a doc rather than off a response, so each is checked against one live board before that adapter is written (B-11).
 
-Field names are taken from the linked docs; verify each against one live response before writing the adapter. Dates are the exception that needed its own rule: Greenhouse exposes `updated_at`, which is **not** a posted date, and Ashby exposes a publish date, so every job records which of the two it got — §9.5 is the term that consumes it and the cap that keeps it honest.
+**Dates are the exception that needed its own rule.** Greenhouse exposes `updated_at`, which is **not** a posted date, and Ashby exposes a publish date, so every job records which of the two it got — §9.5 is the term that consumes it and the cap that keeps it honest.
 
 `provenance` is populated for every field on this path as `{ source: 'discovery', adapter, path }`, where `path` is the response key the value came from — the same contract the DOM path satisfies with a selector (Principle 6).
 

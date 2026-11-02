@@ -1,6 +1,6 @@
 # Hoshi — Product Requirements
 
-**Living document.** Improved daily by the Hoshi Loop. Last substantive revision: 2026-11-01.
+**Living document.** Improved daily by the Hoshi Loop. Last substantive revision: 2026-11-02.
 
 ---
 
@@ -173,6 +173,8 @@ Reuse `identityKeys`. Match in order, first hit wins: canonical `applyUrl` with 
 
 **A page-extracted job always wins over a discovered one.** The page the user actually opened is the higher-fidelity record; discovery fills empty fields on the existing job and leaves populated ones alone, so provenance never degrades from a selector to a guess.
 
+**The page path has to parse the job's own id, or key 2 is unreachable and key 1 is not safe.** Added 2026-11-02. Key 1 compares the URL the user opened against the provider's `applyUrl`, and for at least one provider those are different strings: Lever returns both `hostedUrl` and `applyUrl` for a posting, the second being the first plus `/apply` — `https://jobs.lever.co/{site}/{uuid}` against `…/{uuid}/apply` ([example record](https://apify.com/arman-bd/lever-jobs-scraper), a vendor selling Lever scraping, so `[assumption]` past the response shape it quotes). So key 1 misses by one trailing segment in exactly the case that matters — the job the user opened at a company already watched — and key 2 cannot catch the miss, because nothing in this document required the page path to record a `providerJobId` at all. It does now: **the page path parses the provider's job id out of the same URL §8.7 rule 1 parses the handle from**, the id being a later segment of that hosted posting URL as Lever's `{uuid}` is above, recorded with its provenance like any other field (Principle 6) and `null` when the URL carries none. `[assumption]` the segment position per provider; the same live response B-11 already needs settles it, by comparing that response's `absolute_url` / `hostedUrl` against the page URL.
+
 ### 8.6 Permission surface
 
 The four hosts go in `optional_host_permissions`, requested at the moment the user adds their first board source, never at install. This does not touch Principle 4: discovery runs `fetch` from the service worker against a public API. No content script is registered, no page DOM is read, and no tab the user opened is involved.
@@ -195,7 +197,7 @@ Every `BoardSource` records `handleSource: 'harvested' | 'pasted'` and the URL i
 
 Added 2026-10-17. Nothing notifies a crawler when a role closes, which is why *"expired postings linger on so many sites"*, while *"the ATS record is what the employer edits, so it reflects status changes fastest"* ([JobsPipe](https://jobspipe.dev/blog/job-aggregator-sites), a vendor of ATS feed data, so tagged `[assumption]` where it praises feeds — the mechanism is not in dispute and Greenhouse's own boards corroborate it by leaving a tombstone page behind). §8.1 already polls those records, so Hoshi gets for free the one signal an aggregator cannot buy, and until today it threw the signal away: §9.5's `> 10 days → 0` band was Hoshi ageing listings out on a timer, which is the same guess by a shorter route. A board poll is therefore a closure observation, on one condition:
 
-- **`complete === true`** → every stored job for that board whose `providerJobId` is absent from the response becomes `closed`, recording `closedAt` and `closedReason: 'delisted'`.
+- **`complete === true`** → every stored job for that board whose `providerJobId` is absent from the response becomes `closed`, recording `closedAt` and `closedReason: 'delisted'`. **Closure keys on the provider's id and ignores which path created the record** (§8.5, 2026-11-02): absence from a complete response is an observation about the board rather than about the extractor, and exempting page-extracted jobs would leave the roles the user actually opened — the ones in her pipeline — as the only ones whose listing state never moves. A record whose `providerJobId` is `null` is **unmatched rather than absent** and closes nothing, which is this bullet's own rule one level down: a key that cannot be compared is a failure to observe. **Invariant (11)**, in §9.3's CI-blocking shape: `closedReason === 'delisted'` requires a non-null `providerJobId`.
 - **`complete === false`, `truncated` set, or `errors` non-empty** → **nothing closes.** A Workday board past its 2,000-job cap (§8.2), a rate-limited page, a schema mismatch or a timeout is a failure to observe and not an observation of absence. This is Principle 5 applied to a negative: failing closed means drawing no conclusion from silence.
 - **No board to be absent from** — a page-extracted job at a person-only company (§8.7) — stays `unknown` indefinitely. Three states, never two: `live | closed | unknown`, and `unknown` is never rendered as either of the others.
 
@@ -359,7 +361,7 @@ type HoshiEvent = { at: ISODate } & (
 
 **A job's stage is derived from the log, never stored beside it.** A `status` field on the job record that the user flips to *Interviewing* can disagree with the log, which readmits rule 8 through the UI. There is no such field: the stage shown on a job is its latest `outcome` event, and the only write anywhere is appending one. A job's *listing* state (§8.8) is a different thing and is not an outcome.
 
-**Nothing is ever deleted, and the arithmetic is the reason.** `chrome.storage.local` holds 10,485,760 bytes unless the `unlimitedStorage` permission lifts it ([Chrome docs](https://developer.chrome.com/docs/extensions/mv2/reference/storage)). A heavy year — 300 submissions, two outcome events each, 300 sends and follow-ups, 60 replies, and a brief every morning — serialises to **385–525 KB** depending on identifier length and whitespace, under 6% of that quota, so the log would take two decades or more to become a storage problem; over half of those bytes are `brief` rows rather than submissions. A retention rule would cost code and a judgment call in order to delete the only record of last season. Where the quota does go is the job store, whose `descriptionHtml` fills the same 10 MB at a few hundred jobs (B-17).
+**Nothing is ever deleted, and the arithmetic is the reason.** `chrome.storage.local` holds 10,485,760 bytes unless the `unlimitedStorage` permission lifts it ([Chrome docs](https://developer.chrome.com/docs/extensions/mv2/reference/storage)). A heavy year — 300 submissions, two outcome events each, 300 sends and follow-ups, 60 replies, and a brief every morning — serialises to **360–580 KB** depending on identifier length, whitespace and how close each brief runs to §7.1's caps, under 6% of that quota, so the log would take two decades or more to become a storage problem; the largest share of those bytes is `brief` rows rather than submissions. A retention rule would cost code and a judgment call in order to delete the only record of last season. Where the quota does go is the job store, whose `descriptionHtml` fills the same 10 MB at a few hundred jobs (B-17).
 
 ---
 

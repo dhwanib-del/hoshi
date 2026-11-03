@@ -1,5 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {WEIGHTS,POINTS,scoreJob,freshness,morningBrief,rate,activity,tierFor} from '../src/scoring.js';
+import {WEIGHTS,POINTS,scoreJob,freshness,morningBrief,rate,activity,tierFor,freshJobs,coverage} from '../src/scoring.js';
+import {recencyOf,isFresh} from '../src/freshness.js';
 const profile={roleLanes:['product designer','ux researcher'],priorityThreshold:70};
 const job={title:'Product Designer',company:'Example',listingState:'live',eligibility:'eligible',authorization:'unverified'};
 test('weights sum to 100; C3 balances soft terms, not role+experience',()=>{
@@ -24,11 +25,77 @@ test('connection does not admit an unrelated role',()=>{
  const r=scoreJob({...job,title:'Warehouse Manager'},profile,[p],[{kind:'reply',contactId:'c',at:'2026-10-28'}]);
  assert.equal(r.promoted,false);assert.equal(r.roleFit,0);
 });
-test('updated dates cap freshness at 3',()=>{
+test('edit dates cap freshness; an unverifiable age scores zero and says so',()=>{
  const now=new Date('2026-10-28T12:00:00Z');
- assert.equal(freshness({dateKind:'none',date:null},now).points,0);
- assert.equal(freshness({dateKind:'updated',date:'2026-10-28'},now).points,3);
- assert.equal(freshness({dateKind:'posted',date:'2026-10-28'},now).points,5);
+ const ts=o=>({timestamps:{publishedAt:null,modifiedAt:null,discoveredAt:null,repostedAt:null,...o}});
+ // PRD §9.5: no points without a date Hoshi can name.
+ assert.equal(freshness(ts({}),now).points,0);
+ // Discovery time is NOT evidence about when the employer posted.
+ assert.equal(freshness(ts({discoveredAt:'2026-10-28T11:00:00Z'}),now).points,0);
+ assert.match(freshness(ts({discoveredAt:'2026-10-28T11:00:00Z'}),now).line,/unverified/i);
+ // Invariant (4): an edit date can never earn the top band.
+ assert.equal(freshness(ts({modifiedAt:'2026-10-28T11:00:00Z'}),now).points,3);
+ assert.equal(freshness(ts({publishedAt:'2026-10-28T11:00:00Z'}),now).points,5);
+ assert.equal(freshness(ts({publishedAt:'2026-10-25T11:00:00Z'}),now).points,3);
+ assert.equal(freshness(ts({publishedAt:'2026-10-21T11:00:00Z'}),now).points,1);
+ assert.equal(freshness(ts({publishedAt:'2026-09-21T11:00:00Z'}),now).points,0);
+ // A repost is the live requisition's own start and outranks the original.
+ assert.equal(freshness(ts({publishedAt:'2026-01-01T00:00:00Z',repostedAt:'2026-10-28T11:30:00Z'}),now).points,5);
+});
+test('recency bands separate the first hour, six hours and day from older',()=>{
+ const now=new Date('2026-10-28T12:00:00Z');
+ const at=iso=>({timestamps:{publishedAt:iso}});
+ assert.equal(recencyOf(at('2026-10-28T11:30:00Z'),now).band,'hour');
+ assert.equal(recencyOf(at('2026-10-28T07:00:00Z'),now).band,'sixHours');
+ assert.equal(recencyOf(at('2026-10-27T20:00:00Z'),now).band,'day');
+ assert.equal(recencyOf(at('2026-10-20T12:00:00Z'),now).band,'older');
+ assert.equal(recencyOf({timestamps:{}},now).band,'unverified');
+ // A future-dated posting is refused rather than shown as brand new.
+ assert.equal(recencyOf(at('2026-10-29T12:00:00Z'),now).band,'unverified');
+ assert.equal(isFresh(at('2026-10-20T12:00:00Z'),now),false);
+ assert.equal(isFresh(at('2026-10-28T11:00:00Z'),now),true);
+});
+test('invariant 12: an unverified gate is held, not scored low',()=>{
+ const base={title:'Product Designer',company:'Example',listingState:'live'};
+ const held=scoreJob({...base,eligibility:'eligible',authorization:'unverified'},profile,[],[]);
+ assert.equal(held.total,null);
+ assert.equal(held.gate,'held');
+ assert.equal(held.rankable,false);
+ assert.equal(held.promoted,false);
+ assert.deepEqual(held.missingChecks,['sponsorship policy']);
+ const ranked=scoreJob({...base,eligibility:'eligible',authorization:'confirmed'},profile,[],[]);
+ assert.equal(ranked.gate,'ranked');
+ assert.equal(ranked.rankable,true);
+ // Every ranked job carries both gates in full, so the floor is 40, not 0.
+ assert.ok(ranked.total>=40,'ranked range starts at 40: got '+ranked.total);
+ assert.deepEqual(ranked.scale,{min:40,max:100});
+ const excluded=scoreJob({...base,eligibility:'eligible',authorization:'not-sponsored'},profile,[],[]);
+ assert.equal(excluded.gate,'excluded');
+ assert.equal(excluded.total,null);
+});
+test('fresh jobs group by verified age and count what is held',()=>{
+ const mk=(id,iso,auth)=>({id,title:'Product Designer',company:'Example',listingState:'live',
+  eligibility:'eligible',authorization:auth,timestamps:{publishedAt:iso}});
+ const now=new Date('2026-10-28T12:00:00Z');
+ const s={profile:{...profile,locations:['United States']},people:[],events:[],boards:[],
+  jobs:[mk('a','2026-10-28T11:40:00Z','confirmed'),mk('b','2026-10-01T00:00:00Z','confirmed'),
+   mk('c','2026-10-28T11:50:00Z','unverified'),{id:'d',title:'Product Designer',company:'Example',
+    listingState:'closed',eligibility:'eligible',authorization:'confirmed',timestamps:{publishedAt:'2026-10-28T11:00:00Z'}}]};
+ const f=freshJobs(s,now);
+ assert.equal(f.open,3,'closed jobs leave the fresh board');
+ assert.equal(f.bands.hour.length,2);
+ assert.equal(f.bands.older.length,1);
+ assert.equal(f.held,1);
+ // A held row still appears, but sorts below every scored row.
+ assert.equal(f.bands.hour[0].job.id,'a');
+ assert.equal(f.bands.hour[1].job.id,'c');
+});
+test('coverage never claims real-time monitoring',()=>{
+ const c=coverage({boards:[{company:'Ex',lastCompleteAt:'2026-10-28T06:00:00Z'},{company:'Stale'}]},new Date('2026-10-28T12:00:00Z'));
+ assert.match(c.mode,/not real-time/i);
+ assert.equal(c.boards,2);assert.equal(c.verified,1);
+ assert.deepEqual(c.staleBoards,['Stale']);
+ assert.ok(c.notCovered.some(x=>/LinkedIn/.test(x)));
 });
 test('Wilson intervals appear only with 10 or more observations',()=>{
  assert.equal(rate(4,8,'x').visible,false);const r=rate(3,10,'x');assert.equal(r.visible,true);assert.match(r.summary,/\(.*–.*\)/);

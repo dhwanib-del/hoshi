@@ -1,3 +1,4 @@
+import {mergeTimestamps} from './freshness.js';
 export const KEY='hoshi_v1';
 export const DEFAULTS=Object.freeze({
  profile:{graduationYear:'2027',roleLanes:['product designer','ux designer','ux researcher','experience designer','interaction designer'],sponsorship:'requires-sponsorship',locations:['United States','London'],priorityThreshold:70},
@@ -22,14 +23,44 @@ export function jobIdentity(job){
  return 'name:'+String(job.company+'|'+job.title+'|'+job.location).toLowerCase().replace(/\s+/g,' ').trim();
 }
 export function mergeJob(existing,next){
- if(!existing)return {...next,id:next.id||asId(),createdAt:new Date().toISOString()};
+ if(!existing)return {...next,id:next.id||asId(),createdAt:new Date().toISOString(),
+  timestamps:mergeTimestamps(null,next.timestamps)};
+ // Timestamps merge on their own rules: a real publication date is never
+ // overwritten by a weaker one, and a reappearance after a verified delisting
+ // is recorded as a repost rather than silently restored (src/freshness.js).
+ const timestamps=mergeTimestamps(existing,next.timestamps);
+ const reposted=timestamps.repostedAt&&!existing.timestamps?.repostedAt;
+ const listing=reposted?{listingState:'live',closedAt:null,closedReason:null}:{};
  if(existing.origin==='page'&&next.origin==='discovery'){
+  // PRD §8.5: the page record wins on populated fields; discovery only fills blanks.
   const patched={...existing};
   for(const [key,val] of Object.entries(next))if((patched[key]==null||patched[key]==='')&&val!=null)patched[key]=val;
-  return patched;
+  return {...patched,...listing,timestamps};
  }
- const result={...existing,...next};result.id=existing.id;result.createdAt=existing.createdAt;return result;
+ const result={...existing,...next,...listing,timestamps};
+ result.id=existing.id;result.createdAt=existing.createdAt;return result;
 }
+
+// PRD §9.1 invariant (12), added 2026-11-03. Eligibility and sponsorship are
+// hard gates, so every RANKED job carries both in full: 25 of the 100 points are
+// a constant and the ranked range is 40–100. A job whose gate input is merely
+// *unverified* is a third state — not refused, not passed — and ranking it on a
+// 25-point deficit would sink an unverified job with a replied-to contact below
+// a verified job with nobody at it, on the absence of a check rather than any
+// property of the role. So it is HELD, and the count of held jobs is shown as a
+// number (§10.3 rule 6) rather than as a silence.
+export function gateState(job){
+ const eligibility=job?.eligibility||'unverified';
+ const authorization=job?.authorization||'unverified';
+ if(eligibility==='ineligible'||authorization==='not-sponsored')return {state:'excluded',missing:[],
+  why:eligibility==='ineligible'?'Not eligible for this role':'Employer does not sponsor'};
+ const missing=[];
+ if(eligibility!=='eligible')missing.push('graduation eligibility');
+ if(authorization!=='confirmed')missing.push('sponsorship policy');
+ if(missing.length)return {state:'held',missing,why:'Verify '+missing.join(' and ')+' before this job is ranked'};
+ return {state:'ranked',missing:[],why:'Eligibility and sponsorship verified by you'};
+}
+export const isRankable=job=>gateState(job).state==='ranked';
 export function addJob(state,job){
  if(!job.title||!job.company)throw Error('A job needs a real title and company.');
  const identity=jobIdentity(job);
@@ -43,11 +74,23 @@ export function appendEvent(state,event){
  const e=Object.freeze({id:asId(),at:new Date().toISOString(),...event});
  return {...state,events:[...state.events,e]};
 }
-export function mayMarkApplied(state,jobId,{confirm=false,source='hoshi',score=null}={}){
+// PRD §10.5 / invariant (9): `submission` is two arms discriminated on `source`,
+// not one arm with optional fields. A `source:'user'` row carries NONE of
+// roleFit, totalScore, weightsVersion or a tier — there was no Hoshi score to
+// copy in, and scoring the job at entry time instead is honesty rule 8 in its
+// original form. It adds recordedAt, because `at` is a date she asserts about
+// the past rather than one written inside the flow.
+export function mayMarkApplied(state,jobId,{confirm=false,source='hoshi',score=null,at=null,contactId=null}={}){
  if(!confirm)throw Error('User confirmation required; Hoshi never submits.');
  const job=state.jobs.find(j=>j.id===jobId);if(!job)throw Error('Job missing');
  if(state.events.some(e=>e.kind==='submission'&&e.jobId===jobId))return state;
- return appendEvent(state,{kind:'submission',jobId,source,roleFit:source==='hoshi'?score?.roleFit??null:null,totalScore:source==='hoshi'?score?.total??null:null,weightsVersion:source==='hoshi'?'2026-09-29':null,personAttached:source==='hoshi'&&score?.tier!=='C0'&&score?.contact?{contactId:score.contact.id,tier:score.tier}:null});
+ if(source==='user')return appendEvent(state,{kind:'submission',source:'user',jobId,
+  at:at||new Date().toISOString(),recordedAt:new Date().toISOString(),
+  personAttached:contactId?{contactId}:null});
+ if(!score||score.total==null)throw Error('A Hoshi-scored submission needs the score as at submit');
+ return appendEvent(state,{kind:'submission',source:'hoshi',jobId,
+  roleFit:score.roleFit,totalScore:score.total,weightsVersion:'2026-09-29',
+  personAttached:score.tier!=='C0'&&score.contact?{contactId:score.contact.id,tier:score.tier}:null});
 }
 export function markOutcome(state,jobId,stage){
  if(!['response','screen','interview','rejected'].includes(stage))throw Error('Invalid outcome');

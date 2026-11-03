@@ -1,5 +1,6 @@
 // PRD section 9: scores prioritize conversations; never predict hiring odds.
-import {jobStage} from './model.js';
+import {jobStage,gateState} from './model.js';
+import {freshnessScore,describeAge,recencyOf,isFresh} from './freshness.js';
 export const WEIGHTS=Object.freeze({role:25,eligibility:20,connection:20,experience:10,company:5,narrative:5,location:5,authorization:5,freshness:5});
 export const POINTS=Object.freeze({C3:20,C2:14,C1:8,C0:0});
 const lower=s=>String(s||'').toLowerCase();
@@ -22,13 +23,11 @@ export function tierFor(company,people,events,now=new Date()){
  }
  return best;
 }
+// Freshness lives in src/freshness.js so the four timestamp kinds, the recency
+// bands and the pool bands have one home. WEIGHTS.freshness is the only knob.
 export function freshness(job,now=new Date()){
- if(!job.date||!['posted','updated'].includes(job.dateKind))return {points:0,line:'No reliable posting date'};
- const days=(now-new Date(job.date))/86400000;
- if(!Number.isFinite(days)||days<0)return {points:0,line:'Date could not be verified'};
- const raw=days<=2?5:days<=4?3:days<=10?1:0;
- const points=job.dateKind==='updated'?Math.min(3,raw):raw;
- return {points,line:(job.dateKind==='updated'?'Updated, not posted':'Posted')+' '+job.date+' · '+job.provider};
+ const f=freshnessScore(job,{max:WEIGHTS.freshness,now});
+ return {points:f.points,line:describeAge(job,now)+(job.provider?' · '+job.provider:''),band:f.band,recency:f.recency,basis:f.basis,capped:f.capped};
 }
 export function scoreJob(job,profile,people=[],events=[],now=new Date()){
  const title=lower(job.title),lanes=profile.roleLanes||[];
@@ -43,13 +42,21 @@ export function scoreJob(job,profile,people=[],events=[],now=new Date()){
  const company=job.savedCompany?5:0;
  const narrative=job.narrativeEvidence?5:0;
  const location=job.locationMatch===true?5:0;
- const total=roleFit+eligibility+POINTS[tier.tier]+experience+company+narrative+location+authorization+fresh.points;
- const disqualified=job.eligibility==='ineligible'||job.authorization==='not-sponsored'||job.listingState==='closed';
- const qualified=!disqualified&&roleFit>=15&&job.eligibility==='eligible'&&job.authorization==='confirmed';
+ // Invariant (12), PRD §9.1: only a job whose gates are both VERIFIED is ranked,
+ // so every ranked job scores eligibility 20 and authorization 5 and the ranked
+ // range is 40–100. A held job carries no total at all — a 25-point deficit that
+ // is the absence of a check must never compete with a real score.
+ const gate=gateState(job);
+ const closed=job.listingState==='closed';
+ const rankable=gate.state==='ranked'&&!closed;
+ const total=rankable?roleFit+eligibility+POINTS[tier.tier]+experience+company+narrative+location+authorization+fresh.points:null;
+ const qualified=rankable&&roleFit>=15;
  const threshold=profile.priorityThreshold??70;
  const promoted=qualified&&(total>=threshold||tier.tier!=='C0');
- return {total,roleFit,tier:tier.tier,contact:tier.contact,promoted,qualified,
-  reason:disqualified?'Ineligible, cannot sponsor, or closed':roleFit<15?'Below 15/25 role-fit floor':!qualified?'Verify graduation eligibility and sponsorship':!promoted?'Below priority threshold':'Qualified',
+ return {total,rankable,gate:gate.state,missingChecks:gate.missing,roleFit,tier:tier.tier,contact:tier.contact,promoted,qualified,
+  // The ranked range is 40–100, not 0–100: state it so the number is readable.
+  scale:rankable?{min:40,max:100}:null,
+  reason:closed?'Listing closed — no longer accepting applications':gate.state==='excluded'?gate.why:gate.state==='held'?gate.why:roleFit<15?'Below 15/25 role-fit floor':!promoted?'Below priority threshold':'Qualified',
   lines:['+'+roleFit+' role · '+(direct?'matches your saved role lane':partial?'adjacent role':'not matched'),
     '+'+eligibility+' eligibility · '+(job.eligibility||'not verified'),
     '+'+POINTS[tier.tier]+' connection · '+tier.reason,
@@ -81,6 +88,49 @@ export function morningBrief(state,now=new Date()){
  const promoted=ranked.filter(x=>x.score.promoted).sort((a,b)=>b.score.total-a.score.total||POINTS[b.score.tier]-POINTS[a.score.tier]||a.job.company.localeCompare(b.job.company)).slice(0,5);
  return {conversations,promoted,alsoOpen:ranked.filter(x=>!x.score.promoted).length};
 }
+/**
+ * Fresh Jobs: every open job grouped by verified posting age, newest band first.
+ * Older and unverified rows are kept in their own buckets and are never
+ * presented as newly posted (2026-11-03 spec §3).
+ */
+export function freshJobs(state,now=new Date()){
+ const rows=(state.jobs||[]).filter(j=>j.listingState!=='closed').map(job=>({
+  job,
+  score:scoreJob(job,state.profile,state.people,state.events,now),
+  recency:recencyOf(job,now),
+  age:describeAge(job,now),
+  fresh:isFresh(job,now),
+  contacts:(state.people||[]).filter(p=>lower(p.currentEmployer||p.company)===lower(job.company)).length,
+  applied:(state.events||[]).some(e=>e.kind==='submission'&&e.jobId===job.id)
+ }));
+ const bands={hour:[],sixHours:[],day:[],older:[],unverified:[]};
+ for(const r of rows)(bands[r.recency.band]||bands.unverified).push(r);
+ for(const key of Object.keys(bands))bands[key].sort((a,b)=>(b.score.total??-1)-(a.score.total??-1));
+ return {bands,rows,open:rows.length,
+  held:rows.filter(r=>r.score.gate==='held').length,
+  excluded:rows.filter(r=>r.score.gate==='excluded').length};
+}
+
+/**
+ * What Hoshi actually checked, and when. Polling is polling: this never claims
+ * real-time monitoring (2026-11-03 spec §10).
+ */
+export function coverage(state,now=new Date()){
+ const boards=state.boards||[];
+ const verified=boards.filter(b=>b.lastCompleteAt);
+ const times=verified.map(b=>Date.parse(b.lastCompleteAt)).filter(Number.isFinite).sort((a,b)=>b-a);
+ const stale=boards.filter(b=>!b.lastCompleteAt||(now.getTime()-Date.parse(b.lastCompleteAt))/3600000>48);
+ return {
+  mode:'Checked by polling once a day — not real-time monitoring',
+  boards:boards.length,verified:verified.length,
+  lastCompleteAt:times.length?new Date(times[0]).toISOString():null,
+  staleBoards:stale.map(b=>b.company||b.handle),
+  // Every source Hoshi can see. Aggregators and LinkedIn are not among them.
+  sources:['Greenhouse','Lever','Ashby'],
+  notCovered:['Workday (undocumented endpoint)','job aggregators','LinkedIn']
+ };
+}
+
 export function wilson(k,n){
  if(n<=0)return null;const z=1.96,p=k/n,den=1+z*z/n;
  const mid=(p+z*z/(2*n))/den,half=z*Math.sqrt(p*(1-p)/n+z*z/(4*n*n))/den;

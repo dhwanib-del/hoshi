@@ -19,7 +19,7 @@ Do **not** upload personal contacts, emails, access tokens, OAuth credentials, o
 | Destination | What works |
 | --- | --- |
 | **Orbit** | Daily brief capped at 3 conversations and 5 qualified, explainable jobs; today's Stardust; person-first prompts. |
-| **Jobs** | Save jobs manually or capture a supported ATS job page with a user-triggered click; review role fit and sponsorship; manually mark submitted and outcomes; add company-specific boards; daily provider polling with error and delisting safety. |
+| **Jobs** | **Fresh** section first: open jobs grouped by the posting age Hoshi can verify (last hour / 6h / 24h / older / unverified), with filters for 2027-grad eligibility, sponsorship, your locations and not-yet-applied, and a header stating the last complete check and which sources are and are not covered. Then save jobs manually or capture a supported ATS job page with a user-triggered click; review role fit and sponsorship; manually mark submitted and outcomes; add company-specific boards; daily provider polling with error and delisting safety. |
 | **People** | Local contact bank, search, coffee-chat draft copied to clipboard only, and explicit "mark sent" / "mark replied" tracking. |
 | **Activity** | Exact event counts and clearly qualified rates with 95% Wilson intervals, 10-event minimum, 21-day maturity window, and honest source limitations. |
 
@@ -34,6 +34,9 @@ Do **not** upload personal contacts, emails, access tokens, OAuth credentials, o
 - Incomplete provider results **never close a job**; a verified complete provider result may mark previously observed, now-absent jobs as delisted.
 - Connection tiers require a **named, sourced person**. Scores explain their evidence; they are not probabilities of employment.
 - Raw job description HTML is not stored by discovery (protecting the 10 MB local storage quota).
+- **Posting age is verified, not guessed.** Four timestamps are kept distinct — original publication, last edit, Hoshi's first sighting, and a repost after a verified delisting — and the age shown always names which one it used. An edit date can never earn the top freshness band, and **Hoshi's own discovery time is never used as the posting date**: a row with nothing else says *Posting age unverified* and scores 0.
+- **Polling is described as polling.** Boards are checked once a day. The Fresh section states the last complete check, how many watched boards were verified, and what is not covered (Workday, aggregators, LinkedIn). Nothing claims real-time monitoring.
+- **An unverified eligibility or sponsorship check holds a job out of the ranking rather than scoring it low.** Both are hard gates, so every *ranked* job carries them in full and the ranked range is 40–100, not 0–100; a job awaiting your verification shows `—` and the count of held jobs is stated as a number. Marking such a job applied records it as *your* entry, with no Hoshi score, because there was none.
 - An append-only event log preserves the person's tier and score at the moment the user marked a submission.
 - The default priority threshold of 70 is a **provisional, user-editable implementation choice** while PRD B-15 remains unresolved. It is not a finalized product decision.
 
@@ -45,7 +48,7 @@ Hoshi includes a **read-only Google Sheets adapter** under [sync/](./sync). It m
 
 ## What is *not* included yet
 
-This first release does not include cloud AI generation/classification, full nine-provider ATS classifier coverage, LinkedIn inbox access, automated Gmail tracking, direct Google OAuth, automatic job applications, Workday board discovery, or recruiter interview mode. The PRD describes some of these as built in an earlier codebase, **but that codebase was not present in this repository**, so they have not been carried forward as working features. It also does not alter the existing daily ChatGPT spreadsheet automation.
+Phase 1 of the 2027 job-search agent (fresh-job discovery, verified freshness, deduplication, the Fresh Jobs section) is in. **Not yet built, and each one is blocked on something specific rather than merely unstarted:** job-aggregator ingestion such as NewGrad-Jobs (needs a host permission and a terms review — no official feed); application-link liveness checks; employee discovery and the five-contacts-per-company research (no authorized LinkedIn API exists for this, so it cannot be built as specified — see the PR discussion); Gmail draft creation and Gmail application-status reconciliation (needs an OAuth client ID and consented scopes); live Google Sheets read/write sync (same, and only 2 of the 8 tabs are mapped today); the daily digest and alert channel; and resume matching. Also still absent: cloud AI generation/classification, full nine-provider ATS classifier coverage, automatic job applications, Workday board discovery, and recruiter interview mode. The PRD describes some of these as built in an earlier codebase, **but that codebase was not present in this repository**, so they have not been carried forward as working features. It also does not alter the existing daily ChatGPT spreadsheet automation.
 
 ## Developer checks
 

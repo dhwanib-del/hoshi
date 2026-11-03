@@ -10,3 +10,24 @@ h1,h2,h3,p{margin-top:0}h1,h2,h3{font-family:"Quicksand","Nunito Sans",system-ui
 .pill-tabs{display:flex;gap:7px;overflow:auto;padding:3px 0 10px}.pill-tabs button{border:1px solid var(--border);background:white;border-radius:16px;padding:7px 11px;font-weight:800;font-size:11px;white-space:nowrap;color:var(--muted)}.pill-tabs button.active{background:var(--deep);color:white;border-color:var(--deep)}
 #toast{position:fixed;bottom:90px;left:22px;right:22px;max-width:450px;margin:auto;border-radius:13px;background:var(--ink);color:white;padding:11px 15px;box-shadow:0 12px 25px #1d103b25;z-index:40;font-weight:800;font-size:12px;opacity:0;pointer-events:none;transition:opacity .2s}#toast.visible{opacity:1}.loading{text-align:center;margin-top:50px;color:var(--muted)}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
+/* Fresh Jobs card. Age and the score breakdown lead; nothing is a blank slab. */
+.head{display:flex;gap:10px;align-items:flex-start}
+.score-inline{font:900 20px/1 Quicksand,system-ui,sans-serif;color:var(--deep);background:var(--lavender);border-radius:11px;padding:7px 9px;flex-shrink:0}
+.score-inline.hot{background:var(--deep);color:#fff}
+.age{display:flex;align-items:center;gap:6px;margin:9px 0 0;font-size:11.5px;font-weight:800;color:var(--muted)}
+.age:before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;flex-shrink:0}
+.age.new{color:var(--mint-ink)}.age.old{color:var(--subtle)}.age.unknown{color:#956221}.age.edited{color:#8a7320}
+.person{margin:7px 0 0;font-size:12px;font-weight:800;color:var(--deep)}
+.person.folio{color:#7a6a4e;font-weight:700}
+.breakdown{display:flex;flex-wrap:wrap;gap:5px;margin:10px 0 0}
+.term{font-size:10.5px;font-weight:700;color:var(--muted);background:#f5f3fa;border-radius:7px;padding:3px 7px}
+.term b{color:var(--ink);font-weight:900}
+.term.zero{background:transparent;color:var(--subtle);padding-left:1px}
+.gate-note{margin:9px 0 0;font-size:12px;line-height:1.45;color:#956221;font-weight:700}
+.gate-note.bad{color:var(--red)}
+.card.dim{opacity:.62}
+.status{margin:0 0 12px;border:1px solid var(--border);background:#fff;border-radius:13px;padding:10px 12px}
+.status summary{font-size:11px;font-weight:800;color:var(--muted);cursor:pointer}
+.status p{margin:8px 0 0}
+.pill-tabs.wrap{flex-wrap:wrap;overflow:visible}
+.counts{margin:2px 0 12px}

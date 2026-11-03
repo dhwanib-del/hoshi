@@ -16,7 +16,28 @@ export const DEFAULTS=Object.freeze({
 export const PROTECTED=/\b(race|ethnicity|gender|sex|disability|veteran|birth.?date|date.?of.?birth|sexual.?orientation|religion)\b/i;
 export const asId=()=>globalThis.crypto?.randomUUID?.() || String(Date.now())+'-'+Math.random().toString(36).slice(2);
 export const cleanText=(value,max=500)=>String(value??'').trim().slice(0,max);
-export function stateFrom(input){return Object.fromEntries(Object.entries(DEFAULTS).map(([k,v])=>[k,input?.[k]===undefined?structuredClone(v):input[k]]))}
+export function stateFrom(input){
+ const state=Object.fromEntries(Object.entries(DEFAULTS).map(([k,v])=>[k,input?.[k]===undefined?structuredClone(v):input[k]]));
+ // Migrations. Without these the new engine runs against old records and
+ // produces nothing: a stored profile kept its old keys, so portfolioProjects
+ // never existed and that term scored 0 for everyone with an existing install,
+ // and every job saved before 2026-11-03 carried date/dateKind rather than the
+ // four timestamps, so all of them read "Posting age unverified".
+ state.profile={...structuredClone(DEFAULTS.profile),...state.profile};
+ state.jobs=state.jobs.map(job=>{
+  if(job.timestamps)return job;
+  const ms=job.date?Date.parse(job.date):NaN;
+  const at=Number.isFinite(ms)?new Date(ms).toISOString():null;
+  return {...job,timestamps:{
+   // dateKind said which of the two it was, so carry it to the matching field
+   // and never promote an edit date into a publication date.
+   publishedAt:job.dateKind==='posted'?at:null,
+   modifiedAt:job.dateKind==='updated'?at:null,
+   discoveredAt:job.createdAt||null,
+   repostedAt:null}};
+ });
+ return state;
+}
 export function safeProfile(updates){
  const result={};
  for(const k of ['graduationYear','roleLanes','sponsorship','locations','priorityThreshold'])if(Object.hasOwn(updates||{},k))result[k]=updates[k];

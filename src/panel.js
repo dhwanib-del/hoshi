@@ -1,7 +1,9 @@
 import {morningBrief,scoreJob,activity,freshJobs,coverage} from './scoring.js';
 import {stardust,jobStage,cleanText} from './model.js';
-import {describeAge,UNVERIFIED_LABEL} from './freshness.js';
+import {describeAge,recencyOf,UNVERIFIED_LABEL} from './freshness.js';
 import {parseBoardUrl,PROVIDERS} from './discovery.js';
+import {POINTS} from './scoring.js';
+const POINTS_FOR=t=>POINTS[t]??0;
 let state=null,tab='orbit',search='',jobFilter='fresh',subview=null,review=null;
 let freshFilters={window:'all',grad:false,visa:false,location:false,unapplied:false};
 const view=document.querySelector('#view'),toast=document.querySelector('#toast');
@@ -20,40 +22,65 @@ const WINDOWS=[['all','All'],['hour','Last hour'],['sixHours','Last 6h'],['day',
 const BAND_TITLES={hour:'Posted in the last hour',sixHours:'Posted in the last 6 hours',day:'Posted in the last 24 hours',
  older:'Older than 24 hours — not newly posted',unverified:UNVERIFIED_LABEL};
 
-// Each row is a job Hoshi verified it could still see, with the age it can prove.
-function freshCard(row){
+// One job, led by the two things this surface exists to say: how old the posting
+// provably is, and what the score is made of. An earlier version put a 54px
+// score box first and hid every term behind a disclosure, so a held job and a
+// scored one looked the same and the engine's output never reached the eye.
+const TERM_LABEL={role:'role',eligibility:'eligible',authorization:'visa',connection:'person',freshness:'fresh',portfolio:'portfolio',location:'location'};
+function freshCard(row,opts={}){
  const {job,score,recency,age,contacts,applied}=row;
- const scoreCell=score.total==null
-  ? '<div class="score" title="Held: verification missing">—</div>'
-  : '<div class="score">'+score.total+'<small>/ 100</small></div>';
- const ageChip=recency.band==='unverified'?badge(UNVERIFIED_LABEL,'warn')
-  :recency.band==='older'?badge(age,''):badge(age,'good');
- const visa=job.authorization==='confirmed'?badge('Sponsorship confirmed','good')
-  :job.authorization==='not-sponsored'?badge('No sponsorship','bad'):badge('Sponsorship unverified','warn');
- const grad=job.eligibility==='eligible'?badge('Eligibility verified','good')
-  :job.eligibility==='ineligible'?badge('Not eligible','bad'):badge('Eligibility unverified','warn');
- return '<article class="card"><div class="row"><div class="card-body"><p class="card-title">'+esc(job.title)+'</p>'+
-  '<div class="micro muted">'+esc(job.company)+' · '+esc(job.location||'Location not verified')+'</div></div>'+scoreCell+'</div>'+
-  '<div class="tags">'+ageChip+grad+visa+badge(score.tier+' connection')+
-   badge(contacts+(contacts===1?' contact here':' contacts here'),contacts?'good':'')+
-   (score.portfolioProject?badge('Portfolio: '+score.portfolioProject,'good'):'')+
-   (applied?badge('You marked applied','good'):badge('Not yet applied','warn'))+'</div>'+
-  '<p class="why">'+esc(score.reason)+(score.contact?' · Person: '+esc(score.contact.name):'')+'</p>'+
-  '<details class="disclosure"><summary>Age and score evidence</summary><ul class="line-list">'+
-   '<li>Age basis: '+esc(recency.basis==='none'?'none — Hoshi only knows when it first saw this row':recency.basis)+'</li>'+
-   '<li>Original posted: '+esc(job.timestamps?.publishedAt||'not published by this source')+'</li>'+
+ // An edit date never reads as confidently new, whatever band it lands in —
+ // the whole point of keeping the four kinds apart is that it is weaker evidence.
+ const stage=jobStage(state.events,job.id);
+ const extra=opts.listing?'<div class="tags">'+
+   (job.listingState==='closed'?badge('Closed','bad'):job.listingState==='live'?badge('Live board','good'):badge('Listing unknown','warn'))+
+   badge(stage,stage==='rejected'?'bad':stage==='interview'?'good':'')+
+   (job.sheetStatus?badge('Sheet: '+job.sheetStatus,'warn'):'')+'</div>':'';
+ const dotClass=recency.band==='unverified'?'unknown'
+  :recency.basis==='modified'?'edited'
+   :recency.band==='older'?'old':'new';
+ const ageLine='<p class="age '+dotClass+'">'+esc(recency.band==='unverified'?UNVERIFIED_LABEL:age)+'</p>';
+
+ // Held: no score exists, so show the missing checks and the action, never an
+ // empty box. A missing check is not a low score and must not look like one.
+ if(score.gate!=='ranked'){
+  const excluded=score.gate==='excluded';
+  return '<article class="card'+(excluded?' dim':'')+'"><p class="card-title">'+esc(job.title)+'</p>'+
+   '<div class="micro muted">'+esc(job.company)+' · '+esc(job.location||'Location not verified')+'</div>'+
+   ageLine+extra+
+   '<p class="gate-note '+(excluded?'bad':'')+'">'+esc(excluded?score.reason:'Needs '+score.missingChecks.length+' check'+(score.missingChecks.length===1?'':'s')+' before it can be ranked: '+score.missingChecks.join(' and '))+'</p>'+
+   (score.contact?'<p class="person">★ '+esc(score.contact.name)+' — '+esc(score.tier)+', worth '+POINTS_FOR(score.tier)+' once this is verified</p>'
+     :contacts?'<p class="person">'+contacts+' contact'+(contacts===1?'':'s')+' at this company</p>':'')+
+   '<div class="action-row">'+(excluded?'':button('Verify now','verify-job',job.id))+
+    (job.applyUrl?button('Open posting ↗','open-job',job.id,'ghost'):'')+'</div></article>';
+ }
+
+ const top=score.terms.filter(t=>t.points>0).sort((a,b)=>b.points-a.points);
+ const breakdown=top.map(t=>'<span class="term"><b>'+t.points+'</b> '+esc(TERM_LABEL[t.key])+'</span>').join('');
+ const missed=score.terms.filter(t=>t.points===0).map(t=>TERM_LABEL[t.key]);
+ return '<article class="card"><div class="head"><div class="card-body"><p class="card-title">'+esc(job.title)+'</p>'+
+  '<div class="micro muted">'+esc(job.company)+' · '+esc(job.location||'Location not verified')+'</div></div>'+
+  '<div class="score-inline'+(score.promoted?' hot':'')+'">'+score.total+'</div></div>'+
+  ageLine+extra+
+  (score.contact?'<p class="person">★ '+esc(score.contact.name)+' — '+esc(score.tier)+'</p>':'')+
+  (score.portfolioProject?'<p class="person folio">◆ '+esc(score.portfolioProject)+'</p>':'')+
+  '<div class="breakdown">'+breakdown+(missed.length?'<span class="term zero">0 '+esc(missed.join(', '))+'</span>':'')+'</div>'+
+  '<details class="disclosure"><summary>Evidence</summary><ul class="line-list">'+
+   '<li>Age read from: '+esc(recency.basis==='none'?'nothing — only Hoshi’s own first sighting, which is not a posting date':recency.basis)+'</li>'+
+   '<li>Originally posted: '+esc(job.timestamps?.publishedAt||'not published by this source')+'</li>'+
    '<li>Last edited: '+esc(job.timestamps?.modifiedAt||'not published by this source')+'</li>'+
-   '<li>Hoshi first saw: '+esc(job.timestamps?.discoveredAt||'unrecorded')+'</li>'+
    (job.timestamps?.repostedAt?'<li>Reposted after a verified delisting: '+esc(job.timestamps.repostedAt)+'</li>':'')+
-   score.lines.map(l=>'<li>'+esc(l)+'</li>').join('')+'</ul>'+
-   '<small class="muted">Score is not a hiring probability. Discovery time is never used as the posting date.</small></details>'+
-  '<div class="action-row">'+(job.applyUrl?button('Open official posting ↗','open-job',job.id,''):'')+
-   button(score.gate==='ranked'?'Re-verify':'Verify to rank','verify-job',job.id)+
-   button('Mark I applied','submit',job.id,'ghost')+'</div></article>';
+   score.lines.map(l=>'<li>'+esc(l)+'</li>').join('')+
+   '<li>Scored out of 100 on a '+score.scale.min+'–100 range: both gates are carried by every ranked job.</li></ul>'+
+   '<small class="muted">Not a hiring probability.</small></details>'+
+  '<div class="action-row">'+(job.applyUrl?button('Open posting ↗','open-job',job.id,''):'')+
+   button(applied?'Applied ✓':'Mark I applied','submit',job.id,'ghost')+
+   (opts.listing?button('Review form','preview-fill',job.id,'ghost')+button('Outcome','outcome',job.id,'ghost'):'')+
+   '</div></article>';
 }
 
 function freshView(){
- const {bands,open,held,excluded}=freshJobs(state);
+ const {bands,open,held,excluded,imported}=freshJobs(state);
  const cov=coverage(state);
  const keep=row=>(!freshFilters.grad||row.job.eligibility==='eligible')
   &&(!freshFilters.visa||row.job.authorization==='confirmed')
@@ -64,31 +91,33 @@ function freshView(){
    :freshFilters.window==='sixHours'?['hour','sixHours']:['hour','sixHours','day'];
  const shown=order.map(b=>[b,bands[b].filter(keep)]).filter(([,rows])=>rows.length);
  const toggle=(key,label)=>'<button class="'+(freshFilters[key]?'active':'')+'" data-fresh-toggle="'+key+'">'+label+'</button>';
- return '<div class="eyebrow">Fresh jobs</div><h1>New, and provably new.</h1>'+
-  '<p class="section-intro">Grouped by the posting age Hoshi can verify from the employer\'s own feed. '+
-  'An age it cannot verify says so rather than guessing.</p>'+
-  '<div class="card"><strong>'+esc(cov.mode)+'</strong><p class="micro muted" style="margin:4px 0 0">'+
-   'Last complete check: '+esc(cov.lastCompleteAt?new Date(cov.lastCompleteAt).toLocaleString():'never')+
-   ' · '+cov.verified+' of '+cov.boards+' watched boards verified · Sources: '+esc(cov.sources.join(', '))+
-   '<br>Not covered: '+esc(cov.notCovered.join(', '))+
-   (cov.staleBoards.length?'<br>No complete response in 48h: '+esc(cov.staleBoards.join(', ')):'')+'</p></div>'+
+ const checked=cov.lastCompleteAt?new Date(cov.lastCompleteAt).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'never';
+ // The status used to be a five-line card above everything. It is a caveat, not
+ // the content, so it is one line that opens if she wants the detail.
+ const status='<details class="status"><summary>Checked '+esc(checked)+' · '+cov.verified+'/'+cov.boards+' boards · polled daily, not live</summary>'+
+  '<p class="micro muted">Sources: '+esc(cov.sources.join(', '))+'. Not covered: '+esc(cov.notCovered.join(', '))+'.'+
+  (cov.staleBoards.length?' No complete response in 48h: '+esc(cov.staleBoards.join(', '))+'.':'')+'</p></details>';
+ const counts=[held?held+' held for a check':'',excluded?excluded+' excluded':''].filter(Boolean).join(' · ');
+ return '<div class="eyebrow">Fresh jobs</div>'+status+
   '<div class="pill-tabs">'+WINDOWS.map(([key,label])=>'<button class="'+(freshFilters.window===key?'active':'')+'" data-fresh-window="'+key+'">'+label+'</button>').join('')+'</div>'+
-  '<div class="pill-tabs">'+toggle('grad','2027 grad OK')+toggle('visa','Visa OK')+toggle('location','My locations')+toggle('unapplied','Not applied')+'</div>'+
-  (held?'<div class="card"><strong>'+held+' job'+(held===1?'':'s')+' held for verification</strong><p class="micro muted" style="margin:4px 0 0">A job is ranked only once you confirm graduation eligibility and the sponsorship policy. Until then it carries no score — a missing check is not a low score.</p></div>':'')+
-  (excluded?'<div class="card"><strong>'+excluded+' excluded</strong><p class="micro muted" style="margin:4px 0 0">Ineligible, or the employer does not sponsor. Excluded, not merely ranked lower.</p></div>':'')+
-  (shown.length?shown.map(([band,rows])=>sec(BAND_TITLES[band],rows.length+' of '+open+' open')+'<div class="stack">'+rows.map(freshCard).join('')+'</div>').join('')
-   :empty('🕐','Nothing in this window',open?'All '+open+' open jobs fall outside these filters. Widen the window or clear a toggle.':'0 open jobs. Watch a company board under Jobs, or capture a posting you are already looking at.'));
+  '<div class="pill-tabs wrap">'+toggle('grad','2027 grad')+toggle('visa','Visa')+toggle('location','My cities')+toggle('unapplied','Unapplied')+'</div>'+
+  (counts?'<p class="micro muted counts">'+esc(counts)+' — a missing check is not a low score.</p>':'')+
+  (shown.length?shown.map(([band,rows])=>sec(BAND_TITLES[band],String(rows.length))+'<div class="stack">'+rows.map(freshCard).join('')+'</div>').join('')
+   :empty('🕐','Nothing in this window',open?'All '+open+' open jobs fall outside these filters. Widen the window or clear a toggle.':'0 open jobs. Watch a company board under Jobs, or capture a posting you are already looking at.'))+
+  (imported?'<p class="micro muted counts">'+imported+' imported row'+(imported===1?'':'s')+' from your spreadsheet are under <b>All</b> — they carry no posting date Hoshi can verify, so they are not ranked for freshness here.</p>':'');
 }
 
-function jobCard(job,score){
- const stage=jobStage(state.events,job.id);
- const tag=job.listingState==='closed'?badge('Closed','bad'):job.listingState==='live'?badge('Live board','good'):badge('Listing unknown','warn');
- return '<article class="card"><div class="row"><div class="card-body"><p class="card-title">'+esc(job.title)+'</p><div class="micro muted">'+esc(job.company)+' · '+esc(job.location||'Location not verified')+'</div></div>'+(score.total==null?'<div class="score" title="Held for verification">—</div>':'<div class="score">'+score.total+'<small>/ 100</small></div>')+'</div>'+
- '<div class="tags">'+tag+badge(describeAge(job),job.timestamps?.publishedAt?'good':'warn')+badge(stage,stage==='rejected'?'bad':stage==='interview'?'good':'')+(job.sheetStatus?badge('Sheet: '+job.sheetStatus,'warn'):'')+badge(score.tier+' connection')+(job.authorization==='not-sponsored'?badge('No sponsorship','bad'):job.authorization!=='confirmed'?badge('Sponsorship unverified','warn'):'')+'</div>'+
- '<p class="why">'+esc(score.reason)+(score.contact?' · Person: '+esc(score.contact.name):'')+'</p>'+
- '<details class="disclosure"><summary>Why this score?</summary><ul class="line-list">'+score.lines.map(l=>'<li>'+esc(l)+'</li>').join('')+'</ul><small class="muted">Score is not a hiring probability. No eligibility inferred from silence.</small></details>'+
- '<div class="action-row">'+(job.applyUrl?button('View job ↗','open-job',job.id):'')+button('Verify role','verify-job',job.id)+button('Review form','preview-fill',job.id)+button('Mark I applied','submit',job.id)+button('Update outcome','outcome',job.id,'ghost')+'</div></article>';
+// Orbit and the All/Open/Promoted filters render the SAME card as Fresh. They
+// used to have their own, with the empty score slab and six chips, so the two
+// halves of the product disagreed about what a job looks like.
+function rowFor(job,score){
+ const now=new Date();
+ return {job,score:score||scoreJob(job,state.profile,state.people,state.events,now),
+  recency:recencyOf(job,now),age:describeAge(job,now),
+  contacts:state.people.filter(p=>String(p.currentEmployer||p.company||'').toLowerCase()===String(job.company||'').toLowerCase()).length,
+  applied:state.events.some(e=>e.kind==='submission'&&e.jobId===job.id)};
 }
+function jobCard(job,score){return freshCard(rowFor(job,score),{listing:true});}
 function orbit(){
  const brief=morningBrief(state);const s=stardust(state.events);
  return '<div class="hero"><div class="eyebrow">Your daily orbit</div><h1>Good things start with a conversation.</h1><p>Find the person. Find the role. Make the introduction count.</p><span class="stardust">✦ '+s+' stardust today</span></div>'+

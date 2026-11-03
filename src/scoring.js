@@ -91,6 +91,18 @@ export function scoreJob(job,profile,people=[],events=[],now=new Date()){
   // The ranked range is 40–100, not 0–100: state it so the number is readable.
   scale:rankable?{min:RANKED_FLOOR,max:100}:null,
   portfolioProject:folio.project,
+  // Structured breakdown so a surface can show WHY without parsing prose.
+  // The panel led with a score box and buried all of this behind a disclosure,
+  // which made a scored job and an unscored one look identical.
+  terms:[
+   {key:'role',points:roleFit,note:direct?'your role lane':partial?'adjacent role':'no match'},
+   {key:'eligibility',points:eligibility,note:job.eligibility||'unverified'},
+   {key:'authorization',points:authorization,note:job.authorization||'unverified'},
+   {key:'connection',points:POINTS[tier.tier],note:tier.contact?.name||null},
+   {key:'freshness',points:fresh.points,note:fresh.basis==='none'?null:fresh.band},
+   {key:'portfolio',points:folio.points,note:folio.project},
+   {key:'location',points:location,note:location?'your locations':null}
+  ],
   reason:closed?'Listing closed — no longer accepting applications':gate.state==='excluded'?gate.why:gate.state==='held'?gate.why:roleFit<ROLE_FLOOR?'Below '+ROLE_FLOOR+'/'+WEIGHTS.role+' role-fit floor':!promoted?'Below priority threshold':'Qualified',
   lines:['+'+roleFit+' role · '+(direct?'matches your saved role lane':partial?'adjacent role':'not matched'),
     '+'+eligibility+' eligibility · '+(job.eligibility||'not verified'),
@@ -127,7 +139,12 @@ export function morningBrief(state,now=new Date()){
  * presented as newly posted (2026-11-03 spec §3).
  */
 export function freshJobs(state,now=new Date()){
- const rows=(state.jobs||[]).filter(j=>j.listingState!=='closed').map(job=>({
+ // Rows imported from a spreadsheet or typed by hand carry no posting date any
+ // source can verify, so they would fill this board with "unverified" cards and
+ // bury the jobs it exists to show. They stay under the All filter.
+ const IMPORTED=['google-sheets-csv','manual'];
+ const imported=(state.jobs||[]).filter(j=>IMPORTED.includes(j.origin)&&j.listingState!=='closed').length;
+ const rows=(state.jobs||[]).filter(j=>j.listingState!=='closed'&&!IMPORTED.includes(j.origin)).map(job=>({
   job,
   score:scoreJob(job,state.profile,state.people,state.events,now),
   recency:recencyOf(job,now),
@@ -139,7 +156,7 @@ export function freshJobs(state,now=new Date()){
  const bands={hour:[],sixHours:[],day:[],older:[],unverified:[]};
  for(const r of rows)(bands[r.recency.band]||bands.unverified).push(r);
  for(const key of Object.keys(bands))bands[key].sort((a,b)=>(b.score.total??-1)-(a.score.total??-1));
- return {bands,rows,open:rows.length,
+ return {bands,rows,open:rows.length,imported,
   held:rows.filter(r=>r.score.gate==='held').length,
   excluded:rows.filter(r=>r.score.gate==='excluded').length};
 }

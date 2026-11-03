@@ -1,7 +1,16 @@
 import {mergeTimestamps} from './freshness.js';
 export const KEY='hoshi_v1';
 export const DEFAULTS=Object.freeze({
- profile:{graduationYear:'2027',roleLanes:['product designer','ux designer','ux researcher','experience designer','interaction designer'],sponsorship:'requires-sponsorship',locations:['United States','London'],priorityThreshold:70},
+ profile:{graduationYear:'2027',roleLanes:['product designer','ux designer','ux researcher','experience designer','interaction designer'],sponsorship:'requires-sponsorship',locations:['United States','London','United Kingdom'],priorityThreshold:70,
+  // The user's own projects, in her own words. Editable in Settings. Tags are
+  // what a posting's text is matched against; nothing here is a skill claim.
+  portfolioProjects:[
+   {name:'U-M DPSS',tags:['public safety','service design','government','civic','campus']},
+   {name:'General Motors automotive UX research',tags:['automotive','in-vehicle','infotainment','mobility','user research']},
+   {name:'Open Library multilingual accessibility',tags:['accessibility','a11y','multilingual','localization','internationalization','library']},
+   {name:'Amazon Family research',tags:['family','consumer','marketplace','e-commerce','retail']},
+   {name:'MaizeTix mobile optimization',tags:['mobile','ticketing','conversion','checkout','performance']}
+  ]},
  jobs:[],people:[],boards:[],answers:[],events:[],settings:{},lastBriefDate:null
 });
 export const PROTECTED=/\b(race|ethnicity|gender|sex|disability|veteran|birth.?date|date.?of.?birth|sexual.?orientation|religion)\b/i;

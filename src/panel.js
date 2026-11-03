@@ -36,6 +36,7 @@ function freshCard(row){
   '<div class="micro muted">'+esc(job.company)+' · '+esc(job.location||'Location not verified')+'</div></div>'+scoreCell+'</div>'+
   '<div class="tags">'+ageChip+grad+visa+badge(score.tier+' connection')+
    badge(contacts+(contacts===1?' contact here':' contacts here'),contacts?'good':'')+
+   (score.portfolioProject?badge('Portfolio: '+score.portfolioProject,'good'):'')+
    (applied?badge('You marked applied','good'):badge('Not yet applied','warn'))+'</div>'+
   '<p class="why">'+esc(score.reason)+(score.contact?' · Person: '+esc(score.contact.name):'')+'</p>'+
   '<details class="disclosure"><summary>Age and score evidence</summary><ul class="line-list">'+

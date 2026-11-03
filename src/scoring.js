@@ -1,8 +1,22 @@
 // PRD section 9: scores prioritize conversations; never predict hiring odds.
 import {jobStage,gateState} from './model.js';
 import {freshnessScore,describeAge,recencyOf,isFresh} from './freshness.js';
-export const WEIGHTS=Object.freeze({role:25,eligibility:20,connection:20,experience:10,company:5,narrative:5,location:5,authorization:5,freshness:5});
-export const POINTS=Object.freeze({C3:20,C2:14,C1:8,C0:0});
+// Weight table decided 2026-11-03: the 2027-agent spec's terms and priorities,
+// with a connection term kept rather than dropped to 0. Authorization rises from
+// 5 to 20 and becomes a three-state gate (Q4 answered); experience, company and
+// narrative are retired; portfolio relevance enters at 5.
+export const WEIGHTS=Object.freeze({role:25,eligibility:20,authorization:20,connection:15,freshness:10,portfolio:5,location:5});
+// Tier points rescaled to the 15-point connection term, ordering preserved.
+export const POINTS=Object.freeze({C3:15,C2:10,C1:6,C0:0});
+// Eligibility and authorization are hard gates, so every RANKED job carries both
+// in full. The ranked range is therefore 55–100 (40 gate points + the 15/25 role
+// floor), 45 points wide, and connection's 15 is exactly a third of it.
+export const GATE_POINTS=WEIGHTS.eligibility+WEIGHTS.authorization;
+export const RANKED_FLOOR=GATE_POINTS+15;
+// PRD §9.3 invariant 1: connection re-ranks the qualified set, it cannot admit
+// a job below this floor. 15 of WEIGHTS.role.
+export const ROLE_FLOOR=15;
+export const SOFT_BLOCK=WEIGHTS.freshness+WEIGHTS.portfolio+WEIGHTS.location;
 const lower=s=>String(s||'').toLowerCase();
 export function tierFor(company,people,events,now=new Date()){
  const matches=people.filter(p=>{
@@ -29,19 +43,39 @@ export function freshness(job,now=new Date()){
  const f=freshnessScore(job,{max:WEIGHTS.freshness,now});
  return {points:f.points,line:describeAge(job,now)+(job.provider?' · '+job.provider:''),band:f.band,recency:f.recency,basis:f.basis,capped:f.capped};
 }
+/**
+ * Portfolio relevance, and it must name the project or it scores nothing
+ * (Principle 6). Matches the job's own words against tags the user wrote for
+ * her real projects — never invents a project and never claims a skill.
+ */
+export function portfolioMatch(job,profile){
+ const text=lower((job.title||'')+' '+(job.descriptionText||''));
+ if(!text.trim())return {points:0,project:null,why:'nothing to match against yet'};
+ let best=null;
+ for(const project of profile?.portfolioProjects||[]){
+  const hits=(project.tags||[]).filter(t=>t&&text.includes(lower(t)));
+  if(hits.length&&(!best||hits.length>best.hits.length))best={project,hits};
+ }
+ if(!best)return {points:0,project:null,why:'no saved project matches this posting'};
+ return {points:WEIGHTS.portfolio,project:best.project.name,
+  why:best.project.name+' — matched on '+best.hits.slice(0,3).join(', ')};
+}
+
 export function scoreJob(job,profile,people=[],events=[],now=new Date()){
  const title=lower(job.title),lanes=profile.roleLanes||[];
  const direct=lanes.some(l=>l&&title.includes(lower(l)));
  const partial=!direct&&/product design|ux |user experience|experience design|researcher|interaction design/.test(title);
- const roleFit=direct?25:partial?16:0;
- const eligibility=job.eligibility==='eligible'?20:0;
- const authorization=job.authorization==='confirmed'?5:0;
+ // Derived from WEIGHTS, never hardcoded: a weight change must not leave a
+ // literal behind. (It did, on the first pass: authorization kept scoring 5
+ // after the table moved it to 20, and the ranked floor silently broke.)
+ const roleFit=direct?WEIGHTS.role:partial?Math.round(0.64*WEIGHTS.role):0;
+ const eligibility=job.eligibility==='eligible'?WEIGHTS.eligibility:0;
+ const authorization=job.authorization==='confirmed'?WEIGHTS.authorization:0;
  const tier=tierFor(job.company,people,events,now);
  const fresh=freshness(job,now);
- const experience=job.experienceMatch==='strong'?10:job.experienceMatch==='partial'?5:0;
- const company=job.savedCompany?5:0;
- const narrative=job.narrativeEvidence?5:0;
- const location=job.locationMatch===true?5:0;
+ const folio=portfolioMatch(job,profile);
+ const location=job.locationMatch===true?WEIGHTS.location
+  :(profile.locations||[]).some(l=>l&&lower(job.location).includes(lower(l).trim()))?WEIGHTS.location:0;
  // Invariant (12), PRD §9.1: only a job whose gates are both VERIFIED is ranked,
  // so every ranked job scores eligibility 20 and authorization 5 and the ranked
  // range is 40–100. A held job carries no total at all — a 25-point deficit that
@@ -49,23 +83,22 @@ export function scoreJob(job,profile,people=[],events=[],now=new Date()){
  const gate=gateState(job);
  const closed=job.listingState==='closed';
  const rankable=gate.state==='ranked'&&!closed;
- const total=rankable?roleFit+eligibility+POINTS[tier.tier]+experience+company+narrative+location+authorization+fresh.points:null;
- const qualified=rankable&&roleFit>=15;
+ const total=rankable?roleFit+eligibility+authorization+POINTS[tier.tier]+fresh.points+folio.points+location:null;
+ const qualified=rankable&&roleFit>=ROLE_FLOOR;
  const threshold=profile.priorityThreshold??70;
  const promoted=qualified&&(total>=threshold||tier.tier!=='C0');
  return {total,rankable,gate:gate.state,missingChecks:gate.missing,roleFit,tier:tier.tier,contact:tier.contact,promoted,qualified,
   // The ranked range is 40–100, not 0–100: state it so the number is readable.
-  scale:rankable?{min:40,max:100}:null,
-  reason:closed?'Listing closed — no longer accepting applications':gate.state==='excluded'?gate.why:gate.state==='held'?gate.why:roleFit<15?'Below 15/25 role-fit floor':!promoted?'Below priority threshold':'Qualified',
+  scale:rankable?{min:RANKED_FLOOR,max:100}:null,
+  portfolioProject:folio.project,
+  reason:closed?'Listing closed — no longer accepting applications':gate.state==='excluded'?gate.why:gate.state==='held'?gate.why:roleFit<ROLE_FLOOR?'Below '+ROLE_FLOOR+'/'+WEIGHTS.role+' role-fit floor':!promoted?'Below priority threshold':'Qualified',
   lines:['+'+roleFit+' role · '+(direct?'matches your saved role lane':partial?'adjacent role':'not matched'),
     '+'+eligibility+' eligibility · '+(job.eligibility||'not verified'),
+    '+'+authorization+' work authorization · '+(job.authorization||'not verified'),
     '+'+POINTS[tier.tier]+' connection · '+tier.reason,
-    '+'+experience+' experience · '+(job.experienceMatch||'not evidenced'),
-    '+'+company+' company · '+(job.savedCompany?'watchlisted':'not watchlisted'),
-    '+'+narrative+' narrative · '+(job.narrativeEvidence||'not supplied'),
-    '+'+location+' location · '+(job.locationMatch===true?'preferred location':'not verified'),
-    '+'+authorization+' authorization · '+(job.authorization||'not verified'),
-    '+'+fresh.points+' freshness · '+fresh.line]};
+    '+'+fresh.points+' freshness · '+fresh.line,
+    '+'+folio.points+' portfolio · '+folio.why,
+    '+'+location+' location · '+(location?'matches a location you listed':'not matched to your locations')]};
 }
 export function conversationBrief(state,now=new Date()){
  const items=[];

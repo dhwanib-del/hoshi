@@ -6,11 +6,17 @@ A real, installable Chrome Manifest V3 side-panel extension built from the [Hosh
 
 ## Install the extension locally
 
-1. Open the [Hoshi build branch](https://github.com/dhwanib-del/hoshi/tree/feature/google-sheets-bridge-2026-10-28). Use **Code → Download ZIP**, and unzip it on your computer.
-2. In Chrome, open **chrome://extensions**, turn on **Developer mode**, and select **Load unpacked**.
-3. Select the extracted **hoshi** folder containing manifest.json.
-4. Pin Hoshi. Click the toolbar icon to open its side panel. Data is stored in your browser with `chrome.storage.local`.
-5. Under Settings, set your graduation year, roles, and preferences. To populate People and Jobs from your Google Sheet now: open one tab at a time in Google Sheets and choose **File → Download → Comma-separated values (.csv)**; import the saved CSV in Hoshi Settings.
+1. Download the code. The `master` branch is the installable one: **Code → Download ZIP** on [the repository](https://github.com/dhwanib-del/hoshi), then unzip it. (To try an unmerged branch instead, switch to it with the branch dropdown first, then Download ZIP — the ZIP is always of whichever branch is showing.)
+2. In Chrome, open **chrome://extensions**, turn on **Developer mode** (top right), and select **Load unpacked**.
+3. Select the unzipped folder that *directly contains* `manifest.json`. GitHub's ZIP adds an outer folder named `hoshi-master`, so the one you want is usually the folder inside it.
+4. Pin Hoshi to the toolbar. Clicking the toolbar icon opens the side panel; your data lives in that browser profile via `chrome.storage.local`, and there is no server.
+5. Under Settings, set your graduation year, role lanes, locations and portfolio projects. To populate People and Jobs from your Google Sheet today: in Google Sheets choose **File → Download → Comma-separated values (.csv)**, one tab at a time, and import each file in Hoshi Settings.
+
+**Capturing a job page needs the toolbar icon, not just an open panel.** Hoshi reads a job page under `activeTab`, which Chrome grants only when you invoke the extension on the tab you are looking at. So the order matters: open the job posting, **then** click the Hoshi toolbar icon on that tab, **then** press *Capture current job*. If you navigate to a different page and press Capture, the read is refused and Hoshi says so rather than guessing — click the toolbar icon again on the new page.
+
+**Reloading the unpacked folder can change the extension's ID**, which matters once you add the OAuth client in [docs/google-oauth-setup.md](./docs/google-oauth-setup.md): the client is registered against a specific extension ID. Load it from one stable folder path and leave it there.
+
+**No test of this build has been run in a real browser yet.** The CI suite covers the logic, not the Chrome surface — panel rendering, the permission prompt when you add a board, and live ATS responses are all unexercised. Expect rough edges on first install, and report what breaks.
 
 Do **not** upload personal contacts, emails, access tokens, OAuth credentials, or application spreadsheets to this public GitHub repository.
 

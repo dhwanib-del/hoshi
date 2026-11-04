@@ -20,9 +20,9 @@ export const RECENCY_EDGES = Object.freeze({ hour: 60, sixHours: 360, day: 1440 
 // PRD §9.5 edges, in hours, measured from DHI/St. Louis Fed arrival data.
 export const POOL_EDGES = Object.freeze({ fresh: 48, warm: 96, full: 240 });
 
-// Share of the freshness weight each pool band earns. PRD §9.5's 5/3/1/0 spacing
-// expressed as a share so the weight itself stays a single constant: at a 5-point
-// term this yields exactly 5/3/1/0, at a 15-point term 15/9/3/0.
+// Share of the freshness weight each pool band earns. PRD §9.5 states the bands
+// as these shares rather than as points (invariant 13), so the weight stays a
+// single constant: at a 10-point term this is 10/6/2/0, at 5 it is 5/3/1/0.
 export const POOL_SHARE = Object.freeze({ fresh: 1, warm: 0.6, full: 0.2, stale: 0, none: 0 });
 
 // PRD §9.5 invariant (4): a modification date can never earn the top band.

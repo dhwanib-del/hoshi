@@ -9,13 +9,16 @@ export const WEIGHTS=Object.freeze({role:25,eligibility:20,authorization:20,conn
 // Tier points rescaled to the 15-point connection term, ordering preserved.
 export const POINTS=Object.freeze({C3:15,C2:10,C1:6,C0:0});
 // Eligibility and authorization are hard gates, so every RANKED job carries both
-// in full. The ranked range is therefore 55–100 (40 gate points + the 15/25 role
-// floor), 45 points wide, and connection's 15 is exactly a third of it.
+// in full. The ranked range is therefore RANKED_FLOOR–100 (40 gate points + the
+// role floor), 45 points wide today, and connection's 15 is exactly a third of it.
+// Every figure here is derived below, so none of it can go stale in a comment.
 export const GATE_POINTS=WEIGHTS.eligibility+WEIGHTS.authorization;
 export const RANKED_FLOOR=GATE_POINTS+15;
 // PRD §9.3 invariant 1: connection re-ranks the qualified set, it cannot admit
-// a job below this floor. 15 of WEIGHTS.role.
-export const ROLE_FLOOR=15;
+// a job below this floor. Invariant (13): a share of the term, not a literal —
+// 0.6 of role, which is 15 at today's 25 and follows the table if it moves.
+export const ROLE_FLOOR_SHARE=0.6;
+export const ROLE_FLOOR=Math.round(ROLE_FLOOR_SHARE*WEIGHTS.role);
 export const SOFT_BLOCK=WEIGHTS.freshness+WEIGHTS.portfolio+WEIGHTS.location;
 const lower=s=>String(s||'').toLowerCase();
 export function tierFor(company,people,events,now=new Date()){
@@ -77,9 +80,10 @@ export function scoreJob(job,profile,people=[],events=[],now=new Date()){
  const location=job.locationMatch===true?WEIGHTS.location
   :(profile.locations||[]).some(l=>l&&lower(job.location).includes(lower(l).trim()))?WEIGHTS.location:0;
  // Invariant (12), PRD §9.1: only a job whose gates are both VERIFIED is ranked,
- // so every ranked job scores eligibility 20 and authorization 5 and the ranked
- // range is 40–100. A held job carries no total at all — a 25-point deficit that
- // is the absence of a check must never compete with a real score.
+ // so every ranked job scores eligibility and authorization in full and the
+ // ranked range starts at RANKED_FLOOR. A held job carries no total at all — a
+ // GATE_POINTS-sized deficit that is the absence of a check, not a property of
+ // the role, must never compete with a real score.
  const gate=gateState(job);
  const closed=job.listingState==='closed';
  const rankable=gate.state==='ranked'&&!closed;

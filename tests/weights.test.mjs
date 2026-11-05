@@ -11,9 +11,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  WEIGHTS, POINTS, GATE_POINTS, RANKED_FLOOR, ROLE_FLOOR, ROLE_FLOOR_SHARE, SOFT_BLOCK
+  WEIGHTS, POINTS, GATE_POINTS, RANKED_FLOOR, ROLE_FLOOR, ROLE_FLOOR_SHARE, SOFT_BLOCK,
+  WEIGHTS_VERSION, scoreJob
 } from '../src/scoring.js';
 import { freshnessScore, POOL_SHARE, MODIFIED_CAP_SHARE } from '../src/freshness.js';
+import { stateFrom, addJob, mayMarkApplied } from '../src/model.js';
 
 const hoursAgo = (h, now) => new Date(now.getTime() - h * 3600000).toISOString();
 const NOW = new Date('2026-11-04T09:00:00.000Z');
@@ -71,6 +73,57 @@ test('invariant (4): an edit date caps at 0.6 of the term, never the top band', 
   assert.equal(scored.points, Math.round(MODIFIED_CAP_SHARE * WEIGHTS.freshness));
   assert.ok(scored.points < WEIGHTS.freshness, 'an updated_at can never earn the top band');
   assert.equal(scored.capped, true);
+});
+
+// PRD §10.5 invariant (14). `weightsVersion` is the one field on a submission
+// row that nothing in the product reads — it exists for a future segmentation —
+// so a literal there goes stale without a single test failing, which is exactly
+// what happened between 2026-11-03 and today. The row is append-only, so the
+// damage is permanent rather than a display bug a release fixes.
+const version = table => Object.keys(table).sort().map(k => k.slice(0, 3) + table[k]).join('-');
+
+test('invariant (14): the weights version is derived from the table', () => {
+  assert.equal(WEIGHTS_VERSION, version(WEIGHTS));
+  // Fault injection: move one weight and the version must move with it. A
+  // version that survives a table change is the defect this invariant exists
+  // to make impossible.
+  assert.notEqual(version({ ...WEIGHTS, connection: WEIGHTS.connection + 5 }), WEIGHTS_VERSION);
+  // Order is not identity: the same weights written in another order are the
+  // same table, and must not look like a second regime to a segmented rate.
+  const reordered = Object.fromEntries(Object.entries(WEIGHTS).reverse());
+  assert.equal(version(reordered), WEIGHTS_VERSION);
+  // And it is not a date. A date is a thing someone remembers to change.
+  assert.ok(!/^\d{4}-\d{2}-\d{2}$/.test(WEIGHTS_VERSION));
+});
+
+test('invariant (14): a Hoshi submission row carries the live table, not a literal', () => {
+  const state = addJob(stateFrom(null), {
+    title: 'Product Designer', company: 'Figma', location: 'United States',
+    eligibility: 'eligible', authorization: 'confirmed',
+    timestamps: { publishedAt: hoursAgo(12, NOW) }
+  });
+  const job = state.jobs[0];
+  const score = scoreJob(job, state.profile, [], [], NOW);
+  assert.equal(score.rankable, true, 'both gates verified, so this row is the hoshi arm');
+  const after = mayMarkApplied(state, job.id, { confirm: true, source: 'hoshi', score });
+  const row = after.events.find(e => e.kind === 'submission');
+  assert.equal(row.weightsVersion, WEIGHTS_VERSION);
+  assert.equal(row.weightsVersion, version(WEIGHTS));
+});
+
+test('invariant (14): a score with no weight table is refused, not stamped', () => {
+  const state = addJob(stateFrom(null), {
+    title: 'UX Researcher', company: 'Stripe', location: 'United States',
+    eligibility: 'eligible', authorization: 'confirmed'
+  });
+  const job = state.jobs[0];
+  const { weightsVersion, ...noVersion } = scoreJob(job, state.profile, [], [], NOW);
+  assert.ok(weightsVersion, 'the score carried one to strip');
+  // Fail closed (Principle 5): on an append-only store a guessed row is forever.
+  assert.throws(
+    () => mayMarkApplied(state, job.id, { confirm: true, source: 'hoshi', score: noVersion }),
+    /weight table/
+  );
 });
 
 test('invariant (3): no date Hoshi can name means no points, at any weight', () => {

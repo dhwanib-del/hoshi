@@ -6,6 +6,15 @@ import {freshnessScore,describeAge,recencyOf,isFresh} from './freshness.js';
 // 5 to 20 and becomes a three-state gate (Q4 answered); experience, company and
 // narrative are retired; portfolio relevance enters at 5.
 export const WEIGHTS=Object.freeze({role:25,eligibility:20,authorization:20,connection:15,freshness:10,portfolio:5,location:5});
+// PRD §10.5 invariant (14), added 2026-11-05. The weight table's identity is
+// DERIVED from the table, never written beside it. `weightsVersion` on a
+// submission row exists so Activity can segment a rate by the table that scored
+// it (honesty rule 11), and it was a literal `'2026-09-29'` for the two days
+// after the table moved — stale, silent, and read by nothing, so no test failed.
+// The row is append-only, so that staleness is permanent rather than a bug a
+// release fixes. Sorted keys, so a reordered table is the same table.
+export const WEIGHTS_VERSION=Object.keys(WEIGHTS).sort()
+ .map(k=>k.slice(0,3)+WEIGHTS[k]).join('-');
 // Tier points rescaled to the 15-point connection term, ordering preserved.
 export const POINTS=Object.freeze({C3:15,C2:10,C1:6,C0:0});
 // Eligibility and authorization are hard gates, so every RANKED job carries both
@@ -92,6 +101,9 @@ export function scoreJob(job,profile,people=[],events=[],now=new Date()){
  const threshold=profile.priorityThreshold??70;
  const promoted=qualified&&(total>=threshold||tier.tier!=='C0');
  return {total,rankable,gate:gate.state,missingChecks:gate.missing,roleFit,tier:tier.tier,contact:tier.contact,promoted,qualified,
+  // The version travels with the score, not with whoever writes the row: a
+  // score and the table that produced it are one fact (PRD §10.5 invariant 14).
+  weightsVersion:WEIGHTS_VERSION,
   // The ranked range is 40–100, not 0–100: state it so the number is readable.
   scale:rankable?{min:RANKED_FLOOR,max:100}:null,
   portfolioProject:folio.project,

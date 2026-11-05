@@ -118,8 +118,13 @@ export function mayMarkApplied(state,jobId,{confirm=false,source='hoshi',score=n
   at:at||new Date().toISOString(),recordedAt:new Date().toISOString(),
   personAttached:contactId?{contactId}:null});
  if(!score||score.total==null)throw Error('A Hoshi-scored submission needs the score as at submit');
+ // Invariant (14): no version literal lives here. The score carries the table
+ // that produced it, and a score that cannot name one is REFUSED rather than
+ // stamped with a guess — fail closed (Principle 5) on an append-only store,
+ // where a row written wrong can never be taken back.
+ if(!score.weightsVersion)throw Error('A Hoshi-scored submission needs the weight table that produced the score');
  return appendEvent(state,{kind:'submission',source:'hoshi',jobId,
-  roleFit:score.roleFit,totalScore:score.total,weightsVersion:'2026-09-29',
+  roleFit:score.roleFit,totalScore:score.total,weightsVersion:score.weightsVersion,
   personAttached:score.tier!=='C0'&&score.contact?{contactId:score.contact.id,tier:score.tier}:null});
 }
 export function markOutcome(state,jobId,stage){

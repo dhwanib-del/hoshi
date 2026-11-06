@@ -157,9 +157,11 @@ function activityView(){
  return '<div class="eyebrow">Momentum, not vanity</div><h1>What actually happened.</h1><p class="section-intro">These are the events you marked in Hoshi, not a claim about every application or conversation you have ever had.</p>'+
  '<div class="stats">'+[['Conversations started',a.counts.outreach],['Replies you recorded',a.counts.replies],['Marked submitted',a.counts.submissions],['Interviews recorded',a.counts.interviews]].map(([name,num])=>'<div class="stat"><strong>'+num+'</strong><small>'+name+'</small></div>').join('')+'</div>'+
  '<div class="card" style="margin-top:10px"><strong>'+state.jobs.filter(j=>j.origin==='google-sheets-csv'&&['Applied','Rejected','Interview','Assessment','Offer'].includes(j.sheetStatus)).length+' applications imported from CSV</strong><p class="micro muted">External snapshot only. These are not counted as Hoshi-observed submissions or used in rates.</p></div>'+
- sec('Rates are estimates','95% Wilson interval')+
- a.rates.map(r=>'<div class="rate"><strong>'+esc(r.summary)+'</strong><small>'+esc(r.label)+'. Based only on events you recorded.</small></div>').join('')+
- '<div class="card" style="margin-top:10px"><strong>'+a.immature+' applications too recent</strong><p class="micro muted">Submissions younger than 21 days stay out of response-rate denominators. Missing replies and unconfirmed external submissions are not observed.</p></div>'+
+ sec('Rates are estimates','95% Wilson interval, never pooled across two regimes')+
+ a.rates.map(r=>'<div class="card"><strong>'+esc(r.metric)+'</strong>'+
+  r.segments.map(s=>'<div class="rate"><strong>'+esc(s.summary)+'</strong><small>'+esc(s.label)+'. '+esc(s.skew)+'</small></div>').join('')+
+  '<p class="micro muted">'+esc(r.note)+'</p></div>').join('')+
+ '<div class="card" style="margin-top:10px"><strong>'+(a.immature.hoshi+a.immature.user)+' applications too recent</strong><p class="micro muted">'+a.immature.hoshi+' of Hoshi\'s rows and '+a.immature.user+' of yours are younger than 21 days and stay out of the response-rate denominators. Missing replies and unconfirmed external submissions are not observed.'+(a.weightTables.length>1?' Hoshi\'s rows span '+a.weightTables.length+' weight tables and are not segmented by table.':'')+'</p></div>'+
  sec('Your record','Append-only history')+
  (state.events.length?'<div class="stack">'+state.events.slice(-20).reverse().map(e=>'<div class="card"><strong>'+esc(e.kind)+'</strong><div class="micro muted">'+date(e.at)+' · '+esc(e.stage||e.step||'Recorded by you')+'</div></div>').join('')+'</div>':empty('◉','No recorded events','Mark a message sent, or mark an application after you submit it yourself.'));
 }

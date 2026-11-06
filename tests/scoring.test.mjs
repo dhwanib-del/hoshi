@@ -127,5 +127,5 @@ test('Wilson intervals appear only with 10 or more observations',()=>{
  assert.equal(rate(4,8,'x').visible,false);const r=rate(3,10,'x');assert.equal(r.visible,true);assert.match(r.summary,/\(.*–.*\)/);
 });
 test('no fabricated stats from job stages',()=>{
- const a=activity({events:[]});assert.equal(a.counts.submissions,0);assert.equal(a.rates[0].visible,false);
+ const a=activity({events:[]});assert.equal(a.counts.submissions,0);assert.equal(a.rates[0].segments[0].visible,false);
 });

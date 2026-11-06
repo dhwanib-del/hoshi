@@ -207,13 +207,69 @@ export function rate(k,n,label){
  const [lo,hi]=wilson(k,n);
  return {label,visible:true,summary:Math.round(k/n*100)+'% ('+Math.round(lo*100)+'–'+Math.round(hi*100)+'%) · '+k+' of '+n};
 }
+// PRD §10.3 rule 10 and invariant (15), added 2026-11-06. A rate's population
+// label is DERIVED from the membership test that built its denominator, never
+// written beside it. The person-attached rate here read the literal 'Of
+// applications marked submitted in Hoshi' over a denominator that also held her
+// hand-entered `source:'user'` rows — so the one component whose job is to state
+// its population stated the wrong one, and stated it confidently. A label is
+// also the only part of a rate she cannot check: a percentage is recomputable
+// from `6 of 20`, a population from nothing on the surface. This is invariant
+// (14)'s fix moved from a store to a screen.
+export const POPULATION=Object.freeze({
+ hoshi:{of:x=>x.source==='hoshi',label:'applications Hoshi filled'},
+ user:{of:x=>x.source==='user',label:'applications you entered yourself'},
+ marked:{of:()=>true,label:'outreach sends you marked'}
+});
+// The skew direction belongs to the PAIR (rate, population) and not to either
+// alone, which is why both arms of the person-attached rate read high while the
+// two arms of the response rate point opposite ways. Rule 10 attaches a
+// direction to a rate; once a rate is segmented the direction is a property of
+// the segment, so the caller states it and the population only names itself.
+export function populationRate(key,rows,hit,skew){
+ const p=POPULATION[key];
+ if(!p?.label)throw Error('A rate needs a population that can name itself (invariant 15)');
+ const own=rows.filter(p.of),k=own.filter(hit).length;
+ return {...rate(k,own.length,'Of '+p.label),population:key,k,n:own.length,skew};
+}
+// PRD §10.3 rule 11, amended 2026-11-06. Segmentation by `source` binds exactly
+// two rates — person-attached, and response over `submission` rows — and neither
+// may be shown pooled. Where an arm falls under rule 1's floor of 10 the
+// fallback is rule 1's own: that arm shows its fraction, which is exact about
+// what was recorded. It is never a pooled percentage with a caveat under it,
+// because the caveat arrives after the number has been read.
+function bySource(metric,rows,hit,skews,note){
+ return {metric,kind:'segmented',pooled:null,note,
+  segments:[['hoshi',skews.hoshi],['user',skews.user]].map(([k,s])=>populationRate(k,rows,hit,s))};
+}
 export function activity(state,now=new Date()){
  const e=state.events,sub=e.filter(x=>x.kind==='submission'),out=e.filter(x=>x.kind==='outreach'&&x.step==='sent'),replies=e.filter(x=>x.kind==='reply');
  const responded=new Set(replies.map(x=>x.threadId));
- const attached=sub.filter(x=>x.personAttached?.contactId).length;
- const mature=sub.filter(x=>(now-new Date(x.at))/86400000>=21);
+ const matured=x=>(now-new Date(x.at))/86400000>=21;
+ const mature=sub.filter(matured);
  const answered=new Set(e.filter(x=>x.kind==='outcome'&&['response','screen','interview'].includes(x.stage)).map(x=>x.jobId));
- return {counts:{submissions:sub.length,withPerson:attached,outreach:out.length,replies:replies.length,interviews:e.filter(x=>x.kind==='outcome'&&x.stage==='interview').length},
-  rates:[rate(attached,sub.length,'Of applications marked submitted in Hoshi'),rate(out.filter(x=>responded.has(x.threadId)).length,out.length,'Of outreach sends you marked'),rate(mature.filter(x=>answered.has(x.jobId)).length,mature.length,'Of applications marked submitted 21+ days ago')],
-  immature:sub.length-mature.length,stageFor:id=>jobStage(e,id)};
+ // §10.5: Activity segments by `weightsVersion` or states that it did not. It
+ // states that it did not, and names how many tables the denominator spans,
+ // which is the fact a reader needs. Pooling two scales widens a number; it
+ // does not leave the direction unknown, which is why rule 11's harder fallback
+ // is for `source` and not for this.
+ const tables=[...new Set(sub.filter(x=>x.source==='hoshi').map(x=>x.weightsVersion).filter(Boolean))];
+ return {counts:{submissions:sub.length,withPerson:sub.filter(x=>x.personAttached?.contactId).length,
+   outreach:out.length,replies:replies.length,interviews:e.filter(x=>x.kind==='outcome'&&x.stage==='interview').length},
+  rates:[
+   bySource('A person attached before you submitted',sub,x=>!!x.personAttached?.contactId,
+    {hoshi:'Reads high: the applications you send around Hoshi are mostly the cold ones.',
+     user:'Reads high: you remember the application you cared about, not the midnight one.'},
+    'Your own rows belong in this denominator — having a person attached is a fact about your behaviour, not about Hoshi. They are not pooled with Hoshi’s, because the two arms are skewed by different things (rule 11).'),
+   bySource('A response, 21+ days after submitting',mature,x=>answered.has(x.jobId),
+    {hoshi:'Reads low: a row written at review for an application never sent can only ever look like a failure.',
+     user:'Reads high: the same entry selection, on the other side of the funnel.'},
+    'These two point in opposite directions, so a pooled percentage would have no direction left to state.'),
+   {metric:'A reply to outreach you sent',kind:'single',pooled:null,
+    note:'One regime: every outreach and reply row is yours to assert, so there is nothing here to segment (rule 11).',
+    segments:[populationRate('marked',out,x=>responded.has(x.threadId),
+     'Upper bound: the denominator is the sends you remembered to mark.')]}],
+  immature:{hoshi:sub.filter(x=>x.source==='hoshi'&&!matured(x)).length,
+   user:sub.filter(x=>x.source==='user'&&!matured(x)).length},
+  weightTables:tables,stageFor:id=>jobStage(e,id)};
 }

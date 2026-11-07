@@ -6,6 +6,7 @@ export const PROVIDERS={
  ashby:{host:'https://api.ashbyhq.com/*',coverage:'documented'}
 };
 const err=(stage,message)=>({jobs:[],complete:false,errors:[{stage,message:String(message).slice(0,240)}]});
+const iso=v=>{const ms=v==null?NaN:Date.parse(v);return Number.isFinite(ms)?new Date(ms).toISOString():null};
 export function parseBoardUrl(input){
  let u;try{u=new URL(input)}catch{return null}
  if(u.protocol!=='https:')return null;
@@ -24,9 +25,10 @@ export function normalizedJob(raw,board,fields){
  if(url.protocol!=='https:')throw Error('Invalid apply URL');
  return {
   title:cleanText(fields.title,200),company:board.company,location:cleanText(fields.location,140),
-  applyUrl:url.href,provider:board.provider,providerJobId:String(fields.providerJobId),
+  applyUrl:url.href,submitUrl:fields.submitUrl||null,
+  provider:board.provider,providerJobId:String(fields.providerJobId),
   employmentType:fields.employmentType||null,workplaceType:fields.workplaceType||null,
-  date:fields.date||null,dateKind:fields.dateKind||'none',
+  timestamps:{publishedAt:iso(fields.publishedAt),modifiedAt:iso(fields.modifiedAt),discoveredAt:new Date().toISOString(),repostedAt:null},
   // Do not store full description HTML; job stores otherwise exhaust 10MB quickly.
   descriptionText:cleanText(fields.descriptionText?.replace(/<[^>]*>/g,' ').replace(/\s+/g,' '),1800),
   origin:'discovery',boardId:board.id,listingState:'live',
@@ -51,18 +53,32 @@ export async function listJobs(board,fetchImpl=fetch){
   for(const it of items){
    const fields=board.provider==='greenhouse'?{
     title:it.title,applyUrl:it.absolute_url,providerJobId:it.id,location:it.location?.name,
-    descriptionText:it.content,date:it.updated_at,dateKind:it.updated_at?'updated':'none',
-    provenance:{title:{source:'discovery',adapter:'greenhouse',path:'jobs[].title'},date:{source:'discovery',adapter:'greenhouse',path:'jobs[].updated_at'}}
+    descriptionText:it.content,
+    // updated_at moves on an edit or a repost, so it is a modification and not a
+    // posting date (PRD §9.5). first_published is the real one where present.
+    publishedAt:it.first_published||null,modifiedAt:it.updated_at||null,
+    provenance:{title:{source:'discovery',adapter:'greenhouse',path:'jobs[].title'},
+     publishedAt:{source:'discovery',adapter:'greenhouse',path:'jobs[].first_published'},
+     modifiedAt:{source:'discovery',adapter:'greenhouse',path:'jobs[].updated_at'}}
    }:board.provider==='lever'?{
-    title:it.text,applyUrl:it.applyUrl||it.hostedUrl,providerJobId:it.id,location:it.categories?.location,
+    // hostedUrl is the page the user's browser lands on; applyUrl is that plus
+    // /apply, so storing applyUrl breaks §8.5 key 1. Prefer hostedUrl and keep
+    // the apply link beside it. (PRD §8.5, 2026-11-02.)
+    title:it.text,applyUrl:it.hostedUrl||it.applyUrl,submitUrl:it.applyUrl||null,
+    providerJobId:it.id,location:it.categories?.location,
     employmentType:it.categories?.commitment,workplaceType:it.workplaceType,
-    descriptionText:it.descriptionPlain||it.description,dateKind:'none',
-    provenance:{title:{source:'discovery',adapter:'lever',path:'postings[].text'}}
+    descriptionText:it.descriptionPlain||it.description,
+    publishedAt:Number.isFinite(it.createdAt)?new Date(it.createdAt).toISOString():null,
+    provenance:{title:{source:'discovery',adapter:'lever',path:'postings[].text'},
+     applyUrl:{source:'discovery',adapter:'lever',path:'postings[].hostedUrl'},
+     publishedAt:{source:'discovery',adapter:'lever',path:'postings[].createdAt'}}
    }:{
-    title:it.title,applyUrl:it.applyUrl||it.jobUrl,providerJobId:it.id,location:it.location,
+    title:it.title,applyUrl:it.jobUrl||it.applyUrl,providerJobId:it.id,location:it.location,
     employmentType:it.employmentType,workplaceType:it.workplaceType,
-    descriptionText:it.descriptionHtml,date:it.publishedAt,dateKind:it.publishedAt?'posted':'none',
-    provenance:{title:{source:'discovery',adapter:'ashby',path:'jobs[].title'},date:{source:'discovery',adapter:'ashby',path:'jobs[].publishedAt'}}
+    descriptionText:it.descriptionHtml,
+    publishedAt:it.publishedAt||null,modifiedAt:it.updatedAt||null,
+    provenance:{title:{source:'discovery',adapter:'ashby',path:'jobs[].title'},
+     publishedAt:{source:'discovery',adapter:'ashby',path:'jobs[].publishedAt'}}
    };
    jobs.push(normalizedJob(it,board,fields));
   }
@@ -76,8 +92,22 @@ export function applyBoardResult(state,boardId,result,at=new Date().toISOString(
  });
  let next={...state,boards};
  if(!result.complete||result.errors.length||result.truncated)return next; // absence is NOT evidence on partial responses
+ const board=state.boards.find(b=>b.id===boardId);
  const identifiers=new Set(result.jobs.map(j=>j.provider+':'+j.providerJobId));
- next={...next,jobs:next.jobs.map(j=>j.boardId!==boardId||j.origin!=='discovery'||identifiers.has(j.provider+':'+j.providerJobId)?j:{...j,listingState:'closed',closedAt:at,closedReason:'delisted'})};
+ // PRD §8.8 (2026-11-02): closure keys on the provider's job id and IGNORES which
+ // path created the record. Absence from a complete response is an observation
+ // about the board, not about the extractor — exempting page-captured jobs left
+ // the roles the user actually opened as the only ones that never closed.
+ // Invariant (11): a null providerJobId is UNMATCHED, not absent, and closes
+ // nothing. A record from another board, or from no board, is not compared.
+ const sameBoard=j=>j.boardId===boardId
+  || (j.origin==='page'&&!j.boardId&&board&&j.provider===board.provider&&j.harvestedBoard?.handle===board.handle);
+ next={...next,jobs:next.jobs.map(j=>{
+  if(!sameBoard(j)||j.listingState==='closed')return j;
+  if(!j.providerJobId)return j.listingState==='unknown'?j:{...j,listingState:'unknown',unmatchedReason:'no provider job id to compare'};
+  if(identifiers.has(j.provider+':'+j.providerJobId))return j;
+  return {...j,listingState:'closed',closedAt:at,closedReason:'delisted'};
+ })};
  for(const job of result.jobs)next=addJob(next,job);
  return next;
 }

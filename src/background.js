@@ -65,7 +65,13 @@ async function handle(message){
   case 'MARK_SUBMITTED':return mutator(s=>{
    const job=s.jobs.find(x=>x.id===data.jobId);
    if(!job)throw Error('Job not found');
-   return mayMarkApplied(s,data.jobId,{confirm:data.confirm===true,source:'hoshi',score:scoreJob(job,s.profile,s.people,s.events)});
+   const score=scoreJob(job,s.profile,s.people,s.events);
+   // PRD §10.5: a `source:'hoshi'` row carries the score as at submit. Invariant
+   // (12) means a held job never had one — so marking it applied writes B-21's
+   // `source:'user'` arm instead of inventing a score after the event (rule 8).
+   return score.rankable
+    ? mayMarkApplied(s,data.jobId,{confirm:data.confirm===true,source:'hoshi',score})
+    : mayMarkApplied(s,data.jobId,{confirm:data.confirm===true,source:'user'});
   });
   case 'OUTCOME':return mutator(s=>markOutcome(s,data.jobId,data.stage));
   case 'SENT':return mutator(s=>{

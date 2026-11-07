@@ -12,7 +12,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   WEIGHTS, POINTS, GATE_POINTS, RANKED_FLOOR, ROLE_FLOOR, ROLE_FLOOR_SHARE, SOFT_BLOCK,
-  WEIGHTS_VERSION, scoreJob
+  WEIGHTS_VERSION, scoreJob, ROLE_BANDS, ROLE_ADJACENT_SHARE, roleBand, morningBrief
 } from '../src/scoring.js';
 import { freshnessScore, POOL_SHARE, MODIFIED_CAP_SHARE } from '../src/freshness.js';
 import { stateFrom, addJob, mayMarkApplied } from '../src/model.js';
@@ -133,4 +133,53 @@ test('invariant (3): no date Hoshi can name means no points, at any weight', () 
     assert.equal(scored.points, 0);
     assert.equal(scored.basis, 'none');
   }
+});
+
+// PRD §9.6 invariant (16), added 2026-11-07. Role is the largest term — 25 of
+// the 45-wide ranked range, the majority of what separates two ranked jobs —
+// and the document carried a weight for it with no scoring rule at all. The
+// bands are shares of the term and the RELATION is what is asserted: the floor
+// and the adjacent band are one decision, one point apart today, so either one
+// moved alone either empties the brief of every adjacent-title role or admits
+// every title Hoshi half-recognised.
+test('invariant (16): unmatched < floor <= adjacent < lane, as shares of role', () => {
+  assert.ok(0 < ROLE_FLOOR_SHARE, 'the unmatched band is below the floor');
+  assert.ok(ROLE_FLOOR_SHARE <= ROLE_ADJACENT_SHARE, 'an adjacent title still clears the floor');
+  assert.ok(ROLE_ADJACENT_SHARE < 1, 'an adjacent title is worth less than a saved lane');
+  assert.equal(ROLE_BANDS.lane, WEIGHTS.role);
+  assert.equal(ROLE_BANDS.adjacent, Math.round(ROLE_ADJACENT_SHARE * WEIGHTS.role));
+  assert.equal(ROLE_BANDS.unmatched, 0);
+  assert.ok(ROLE_BANDS.unmatched < ROLE_FLOOR, 'an unmatched title cannot be ranked');
+  assert.ok(ROLE_BANDS.adjacent >= ROLE_FLOOR, 'an adjacent title can be');
+  assert.ok(ROLE_BANDS.adjacent < ROLE_BANDS.lane);
+});
+
+test('invariant (16): the band is named, and 0 says "not found" rather than "not yours"', () => {
+  const profile = { roleLanes: ['UX Researcher'], locations: [], portfolioProjects: [] };
+  assert.deepEqual(roleBand({ title: 'Senior UX Researcher' }, profile),
+    { points: ROLE_BANDS.lane, basis: 'lane', lane: 'UX Researcher', field: 'title' });
+  assert.equal(roleBand({ title: 'Product Designer II' }, profile).basis, 'adjacent');
+  const miss = roleBand({ title: 'Member of Technical Staff' }, profile);
+  assert.equal(miss.basis, 'unmatched');
+  assert.equal(miss.points, 0);
+  // A score line for an unmatched title must not read as a verdict on the role.
+  const line = scoreJob({ title: 'Member of Technical Staff', company: 'Acme', location: '',
+    eligibility: 'eligible', authorization: 'confirmed' }, profile, [], [], NOW).lines[0];
+  assert.match(line, /no saved lane/);
+  assert.doesNotMatch(line, /not matched$/);
+});
+
+test('§9.6: block 3 counts the titles no saved lane matched', () => {
+  const profile = { roleLanes: ['UX Researcher'], locations: [], portfolioProjects: [] };
+  const state = { profile, people: [], events: [], boards: [], jobs: [
+    { id: 'a', title: 'Member of Technical Staff', company: 'Acme', location: '',
+      eligibility: 'eligible', authorization: 'confirmed' },
+    { id: 'b', title: 'Experience Strategist', company: 'Beta', location: '',
+      eligibility: 'eligible', authorization: 'confirmed' },
+    { id: 'c', title: 'UX Researcher', company: 'Gamma', location: '',
+      eligibility: 'eligible', authorization: 'confirmed' }
+  ] };
+  const brief = morningBrief(state, NOW);
+  assert.equal(brief.unmatchedTitles, 2, 'both unrecognised titles are counted, not swallowed');
+  assert.ok(brief.alsoOpen >= brief.unmatchedTitles);
 });

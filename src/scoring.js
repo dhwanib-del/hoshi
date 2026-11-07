@@ -28,6 +28,18 @@ export const RANKED_FLOOR=GATE_POINTS+15;
 // 0.6 of role, which is 15 at today's 25 and follows the table if it moves.
 export const ROLE_FLOOR_SHARE=0.6;
 export const ROLE_FLOOR=Math.round(ROLE_FLOOR_SHARE*WEIGHTS.role);
+// PRD §9.6 invariant (16), added 2026-11-07. Role is the largest term and had no
+// scoring rule in the document at all. Three bands, as shares of the term, with
+// the relation asserted rather than the points: unmatched < floor <= adjacent <
+// lane. The floor and the adjacent band are ONE decision — one point apart today
+// — so either moved alone empties the brief of every adjacent-title role or
+// admits every title Hoshi half-recognised.
+export const ROLE_ADJACENT_SHARE=0.64;
+export const ROLE_BANDS=Object.freeze({
+ lane:WEIGHTS.role,
+ adjacent:Math.round(ROLE_ADJACENT_SHARE*WEIGHTS.role),
+ unmatched:0
+});
 export const SOFT_BLOCK=WEIGHTS.freshness+WEIGHTS.portfolio+WEIGHTS.location;
 const lower=s=>String(s||'').toLowerCase();
 export function tierFor(company,people,events,now=new Date()){
@@ -73,14 +85,28 @@ export function portfolioMatch(job,profile){
   why:best.project.name+' — matched on '+best.hits.slice(0,3).join(', ')};
 }
 
+/**
+ * PRD §9.6. Which of her saved lanes the posting is, read off fields that carry
+ * provenance — never a keyword overlap against her resume, and never a claim
+ * about her chances. `unmatched` is "no lane was found in the posting's own
+ * words", which is NOT "a role she cannot do"; the floor cannot tell them apart,
+ * so the count of unmatched rows is surfaced rather than swallowed.
+ */
+export function roleBand(job,profile){
+ const title=lower(job.title),lanes=profile?.roleLanes||[];
+ const lane=lanes.find(l=>l&&title.includes(lower(l)));
+ if(lane)return {points:ROLE_BANDS.lane,basis:'lane',lane,field:'title'};
+ if(/product design|ux |user experience|experience design|researcher|interaction design/.test(title))
+  return {points:ROLE_BANDS.adjacent,basis:'adjacent',lane:null,field:'title'};
+ return {points:ROLE_BANDS.unmatched,basis:'unmatched',lane:null,field:'title'};
+}
+
 export function scoreJob(job,profile,people=[],events=[],now=new Date()){
- const title=lower(job.title),lanes=profile.roleLanes||[];
- const direct=lanes.some(l=>l&&title.includes(lower(l)));
- const partial=!direct&&/product design|ux |user experience|experience design|researcher|interaction design/.test(title);
  // Derived from WEIGHTS, never hardcoded: a weight change must not leave a
  // literal behind. (It did, on the first pass: authorization kept scoring 5
  // after the table moved it to 20, and the ranked floor silently broke.)
- const roleFit=direct?WEIGHTS.role:partial?Math.round(0.64*WEIGHTS.role):0;
+ const role=roleBand(job,profile),direct=role.basis==='lane',partial=role.basis==='adjacent';
+ const roleFit=role.points;
  const eligibility=job.eligibility==='eligible'?WEIGHTS.eligibility:0;
  const authorization=job.authorization==='confirmed'?WEIGHTS.authorization:0;
  const tier=tierFor(job.company,people,events,now);
@@ -100,7 +126,11 @@ export function scoreJob(job,profile,people=[],events=[],now=new Date()){
  const qualified=rankable&&roleFit>=ROLE_FLOOR;
  const threshold=profile.priorityThreshold??70;
  const promoted=qualified&&(total>=threshold||tier.tier!=='C0');
- return {total,rankable,gate:gate.state,missingChecks:gate.missing,roleFit,tier:tier.tier,contact:tier.contact,promoted,qualified,
+ return {total,rankable,gate:gate.state,missingChecks:gate.missing,roleFit,
+  // §9.6: the band and the lane that produced it, so a surface can say "no lane
+  // matched this title" rather than implying the role is wrong.
+  roleFitBasis:role.basis,roleLane:role.lane,roleField:role.field,
+  tier:tier.tier,contact:tier.contact,promoted,qualified,
   // The version travels with the score, not with whoever writes the row: a
   // score and the table that produced it are one fact (PRD §10.5 invariant 14).
   weightsVersion:WEIGHTS_VERSION,
@@ -111,7 +141,7 @@ export function scoreJob(job,profile,people=[],events=[],now=new Date()){
   // The panel led with a score box and buried all of this behind a disclosure,
   // which made a scored job and an unscored one look identical.
   terms:[
-   {key:'role',points:roleFit,note:direct?'your role lane':partial?'adjacent role':'no match'},
+   {key:'role',points:roleFit,note:direct?role.lane:partial?'adjacent role':'no saved lane found in the title'},
    {key:'eligibility',points:eligibility,note:job.eligibility||'unverified'},
    {key:'authorization',points:authorization,note:job.authorization||'unverified'},
    {key:'connection',points:POINTS[tier.tier],note:tier.contact?.name||null},
@@ -120,7 +150,7 @@ export function scoreJob(job,profile,people=[],events=[],now=new Date()){
    {key:'location',points:location,note:location?'your locations':null}
   ],
   reason:closed?'Listing closed — no longer accepting applications':gate.state==='excluded'?gate.why:gate.state==='held'?gate.why:roleFit<ROLE_FLOOR?'Below '+ROLE_FLOOR+'/'+WEIGHTS.role+' role-fit floor':!promoted?'Below priority threshold':'Qualified',
-  lines:['+'+roleFit+' role · '+(direct?'matches your saved role lane':partial?'adjacent role':'not matched'),
+  lines:['+'+roleFit+' role · '+(direct?'matches your saved lane “'+role.lane+'”':partial?'adjacent role title':'no saved lane found in this title — not a judgment about the role'),
     '+'+eligibility+' eligibility · '+(job.eligibility||'not verified'),
     '+'+authorization+' work authorization · '+(job.authorization||'not verified'),
     '+'+POINTS[tier.tier]+' connection · '+tier.reason,
@@ -147,7 +177,11 @@ export function morningBrief(state,now=new Date()){
  const conversations=conversationBrief(state,now);
  const ranked=state.jobs.map(job=>({job,score:scoreJob(job,state.profile,state.people,state.events,now)})).filter(x=>x.job.listingState!=='closed');
  const promoted=ranked.filter(x=>x.score.promoted).sort((a,b)=>b.score.total-a.score.total||POINTS[b.score.tier]-POINTS[a.score.tier]||a.job.company.localeCompare(b.job.company)).slice(0,5);
- return {conversations,promoted,alsoOpen:ranked.filter(x=>!x.score.promoted).length};
+ // §9.6: block 3 states how many open jobs left the ranked set because no saved
+ // lane was found in the title, as a number (§10.3 rule 6's shape). A silent
+ // exclusion only has to be countable — not listed, and never scored.
+ return {conversations,promoted,alsoOpen:ranked.filter(x=>!x.score.promoted).length,
+  unmatchedTitles:ranked.filter(x=>x.score.roleFitBasis==='unmatched').length};
 }
 /**
  * Fresh Jobs: every open job grouped by verified posting age, newest band first.

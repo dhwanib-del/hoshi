@@ -11,7 +11,7 @@ const pageJob={title:'Product Designer',company:'Example',provider:'lever',provi
  applyUrl:'https://jobs.lever.co/ex/d2e897ae',origin:'page',listingState:'unknown',
  timestamps:{publishedAt:'2026-10-28T10:00:00Z',discoveredAt:'2026-10-28T10:05:00Z'}};
 const boardJob={title:'Product Designer',company:'Example',provider:'lever',providerJobId:'d2e897ae',
- applyUrl:'https://jobs.lever.co/ex/d2e897ae/apply',origin:'discovery',boardId:'b',listingState:'live',
+ applyUrl:'https://jobs.lever.co/ex/d2e897ae/apply',origin:'discovery',boardId:'b',listingState:'live',listingSeenAt:'2026-11-08T06:00:00Z',
  timestamps:{publishedAt:'2026-10-28T10:00:00Z',discoveredAt:'2026-10-28T11:00:00Z'}};
 
 test('a page capture and a board row for one requisition are one job',()=>{
@@ -42,7 +42,7 @@ test('invariant 11: a null provider job id is unmatched, not absent',()=>{
 
 test('a job at another board is never closed by this board’s response',()=>{
  let s={...stateFrom(),boards:[board,{id:'b2',provider:'ashby',company:'Other',handle:'other'}]};
- s=addJob(s,{...boardJob,boardId:'b2',provider:'ashby',providerJobId:'zz'});
+ s=addJob(s,{...boardJob,boardId:'b2',provider:'ashby',providerJobId:'zz',listingSeenAt:'2026-11-08T06:00:00Z'});
  const complete=applyBoardResult(s,'b',{jobs:[],complete:true,errors:[]});
  assert.equal(complete.jobs[0].listingState,'live');
 });

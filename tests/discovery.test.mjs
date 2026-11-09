@@ -17,9 +17,12 @@ test('schema mismatch fails closed, not partially parsed',async()=>{
 test('complete polls close delisted jobs, incomplete polls close nothing',()=>{
  const board={id:'b',provider:'lever',company:'Example',handle:'ex'};
  let s={...stateFrom(),boards:[board]};
- s=addJob(s,{title:'Old',company:'Example',applyUrl:'https://jobs.lever.co/ex/1',origin:'discovery',provider:'lever',providerJobId:'1',boardId:'b',listingState:'live'});
+ s=addJob(s,{title:'Old',company:'Example',applyUrl:'https://jobs.lever.co/ex/1',origin:'discovery',provider:'lever',providerJobId:'1',boardId:'b',
+  // A live record is one a complete response confirmed, with the instant it did
+  // (PRD §8.8, invariant 17). Hand-stamping liveness now fails closed to unknown.
+  listingState:'live',listingSeenAt:'2026-11-08T06:00:00Z'});
  const partial=applyBoardResult(s,'b',{jobs:[],complete:false,errors:[{stage:'http',message:'429'}]});
- assert.equal(partial.jobs[0].listingState,'live');
+ assert.equal(partial.jobs[0].listingState,'live','an incomplete poll neither closes nor un-confirms');
  const complete=applyBoardResult(s,'b',{jobs:[],complete:true,errors:[]});
  assert.equal(complete.jobs[0].listingState,'closed');assert.equal(complete.jobs[0].closedReason,'delisted');
 });

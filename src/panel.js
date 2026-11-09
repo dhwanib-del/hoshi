@@ -1,5 +1,5 @@
 import {morningBrief,scoreJob,activity,freshJobs,coverage} from './scoring.js';
-import {stardust,jobStage,cleanText} from './model.js';
+import {stardust,jobStage,cleanText,listingStatus} from './model.js';
 import {describeAge,recencyOf,UNVERIFIED_LABEL} from './freshness.js';
 import {parseBoardUrl,PROVIDERS} from './discovery.js';
 import {POINTS} from './scoring.js';
@@ -32,8 +32,15 @@ function freshCard(row,opts={}){
  // An edit date never reads as confidently new, whatever band it lands in —
  // the whole point of keeping the four kinds apart is that it is weaker evidence.
  const stage=jobStage(state.events,job.id);
+ // PRD §8.8 (2026-11-09): the badge prints WHEN the board last confirmed the
+ // listing, because `live` is now an observation with an instant rather than a
+ // state someone wrote. A confirmation older than two polls reads as unknown,
+ // derived here rather than stamped on the record.
+ const listing=listingStatus(job);
  const extra=opts.listing?'<div class="tags">'+
-   (job.listingState==='closed'?badge('Closed','bad'):job.listingState==='live'?badge('Live board','good'):badge('Listing unknown','warn'))+
+   (listing.state==='closed'?badge('Closed '+date(listing.seenAt),'bad')
+    :listing.state==='live'?badge('Listed, checked '+date(listing.seenAt),'good')
+    :badge(listing.seenAt?'Listing unconfirmed since '+date(listing.seenAt):'Listing unconfirmed','warn'))+
    badge(stage,stage==='rejected'?'bad':stage==='interview'?'good':'')+
    (job.sheetStatus?badge('Sheet: '+job.sheetStatus,'warn'):'')+'</div>':'';
  const dotClass=recency.band==='unverified'?'unknown'

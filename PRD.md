@@ -52,7 +52,6 @@ Verified by test run, not asserted. 241 tests passing as of 2026-09-27.
 
 **Not built:**
 
-- Specified, no code written: Daily Brief (§7), discovery engine (§8), fit scoring (§9), analytics, honesty rules and the event log (§10), answer bank (§11). Each section header carries its own date.
 - Not yet specified: resume library and tailoring with diff, interview mode.
 
 **Blocked:**
@@ -89,7 +88,7 @@ Carried by the loop until answered. The loop must not guess these.
 
 ## 7. The Daily Brief
 
-Specified 2026-10-03 (B-02). No code written. Renders in Orbit. It sits here, ahead of the engines, because it is the only surface the user opens every day: §8, §9 and §10 exist to fill it. (Backlog: `claude/hoshi/BACKLOG.md`.)
+Renders in Orbit. It sits here, ahead of the engines, because it is the only surface the user opens every day: §8, §9 and §10 exist to fill it. (Backlog: `claude/hoshi/BACKLOG.md`.)
 
 ### 7.1 Three blocks, fixed order, hard caps
 
@@ -114,8 +113,6 @@ Rates stay in Activity. Two reasons, both from §10.3: a rate must carry its 95%
 ---
 
 ## 8. Discovery engine
-
-Specified 2026-09-28 (B-03). No code written.
 
 ### 8.1 Discovery is seeded by companies, not keywords
 
@@ -193,13 +190,16 @@ Added 2026-10-12. §8.1 seeds the watchlist from companies where the user has a 
 
 Every `BoardSource` records `handleSource: 'harvested' | 'pasted'` and the URL it was parsed from, so a board that has stopped returning jobs can be told apart from a handle that was never right. `[assumption]` that the handle in a hosted board URL is byte-identical to the API handle for all four providers: it follows from §8.2's endpoint shapes, but no provider documents the equivalence, and the two provider docs that would confirm it could not be opened from this sandbox. Verify it against one live board per provider alongside B-11's CORS check — the same four requests answer both.
 
-### 8.8 Delisting: absence is evidence, but only from a complete response
+### 8.8 Listing state is observed, in both directions, and only from a complete response
 
 Added 2026-10-17. Nothing notifies a crawler when a role closes, which is why *"expired postings linger on so many sites"*, while *"the ATS record is what the employer edits, so it reflects status changes fastest"* ([JobsPipe](https://jobspipe.dev/blog/job-aggregator-sites), a vendor of ATS feed data, so tagged `[assumption]` where it praises feeds — the mechanism is not in dispute and Greenhouse's own boards corroborate it by leaving a tombstone page behind). §8.1 already polls those records, so Hoshi gets for free the one signal an aggregator cannot buy, and until today it threw the signal away: §9.5's `> 10 days → 0` band was Hoshi ageing listings out on a timer, which is the same guess by a shorter route. A board poll is therefore a closure observation, on one condition:
 
 - **`complete === true`** → every stored job for that board whose `providerJobId` is absent from the response becomes `closed`, recording `closedAt` and `closedReason: 'delisted'`. **Closure keys on the provider's id and ignores which path created the record** (§8.5, 2026-11-02): absence from a complete response is an observation about the board rather than about the extractor, and exempting page-extracted jobs would leave the roles the user actually opened — the ones in her pipeline — as the only ones whose listing state never moves. A record whose `providerJobId` is `null` is **unmatched rather than absent** and closes nothing, which is this bullet's own rule one level down: a key that cannot be compared is a failure to observe. **Invariant (11)**, in §9.3's CI-blocking shape: `closedReason === 'delisted'` requires a non-null `providerJobId`.
+- **The same response is the only thing that makes a job `live`.** Added 2026-11-09. A stored job whose `providerJobId` appears in a complete, error-free response is **observed listed**: it becomes `live` and records `listingSeenAt`, the instant of that response — again whatever path created the record, which is the closure rule's own mirror. So `live` is never a state a producer writes at record creation: an adapter minting a row from a response may set it, because that response *is* the observation, while the page path, a pasted board, a spreadsheet import and a hand-typed row may not. **Invariant (17)**, in §9.3's CI-blocking shape: `listingState === 'live'` requires a non-null `listingSeenAt`, and a record arriving with the claim and not the observation fails closed to `unknown` rather than keeping it — `unknown` is the no-claim state, so failing closed here means withdrawing a claim rather than inventing one. The positive half of this signal has been free since 2026-10-17 and was discarded: a job she opened at a watched board stayed `unknown` through every morning that board confirmed it, while the same response was trusted to close it.
 - **`complete === false`, `truncated` set, or `errors` non-empty** → **nothing closes.** A Workday board past its 2,000-job cap (§8.2), a rate-limited page, a schema mismatch or a timeout is a failure to observe and not an observation of absence. This is Principle 5 applied to a negative: failing closed means drawing no conclusion from silence.
 - **No board to be absent from** — a page-extracted job at a person-only company (§8.7) — stays `unknown` indefinitely. Three states, never two: `live | closed | unknown`, and `unknown` is never rendered as either of the others.
+
+**An observation has a date, so it also has an expiry.** §8.9 returns a job to `unknown` when its board has gone more than two intervals without a complete response; `listingSeenAt` makes that per job rather than per board, which is what a job added to a watched board mid-season needs, and it lets the surface print when the listing was last confirmed instead of asserting a bare `live` (§9.5's move on a posting date, §9.2's on an employer). A `live` older than two intervals is **derived** as `unknown` rather than stamped as one (invariant 13's shape), so the stored value is the observation and nothing else goes false while nobody polls.
 
 A closed job leaves both job blocks of the brief (§7.1) and is never promoted, scored or re-ranked; a `live` job whose freshness is 0 is still a job. **Delisting writes no `outcome` event** (§10.5): a posting coming down says nothing about the user's application, the listing's state is not the application's stage, and logging it as `rejected` would invent a result the market never gave — Principle 2 on the event log, where the append-only rule means a fabricated row can never be taken back.
 
@@ -216,8 +216,6 @@ Added 2026-10-19 (B-18). §8.8 made delisting latency equal to the polling inter
 ---
 
 ## 9. Fit scoring
-
-Specified 2026-09-29 (B-01). No code written.
 
 ### 9.1 The connection term
 
@@ -296,7 +294,7 @@ Added 2026-11-07. Role is 25 of 100 and 25 of the 45-wide ranked range — **the
 
 ## 10. Analytics and honesty rules
 
-Specified 2026-10-02 (B-04), extended 2026-10-09 with rule 8 and §10.5, 2026-10-16 with rule 9 and the event log, 2026-10-21 with the outreach kinds, 2026-10-23 with rule 10, and 2026-10-30 with rule 11 and the user-entered submission. No code written. Renders in the Activity destination; the Daily Brief surface is §7.
+Renders in the Activity destination; the Daily Brief surface is §7.
 
 ### 10.1 The sample size decides the metric set
 

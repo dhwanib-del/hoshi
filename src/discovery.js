@@ -31,7 +31,10 @@ export function normalizedJob(raw,board,fields){
   timestamps:{publishedAt:iso(fields.publishedAt),modifiedAt:iso(fields.modifiedAt),discoveredAt:new Date().toISOString(),repostedAt:null},
   // Do not store full description HTML; job stores otherwise exhaust 10MB quickly.
   descriptionText:cleanText(fields.descriptionText?.replace(/<[^>]*>/g,' ').replace(/\s+/g,' '),1800),
-  origin:'discovery',boardId:board.id,listingState:'live',
+  // No listingState here. PRD §8.8 (2026-11-09): `live` is an observation, not
+  // a thing a producer writes when it mints a row — applyBoardResult sets it
+  // from the response that contained the job, with the instant it saw it.
+  origin:'discovery',boardId:board.id,
   provenance:fields.provenance||{}
  };
 }
@@ -109,5 +112,15 @@ export function applyBoardResult(state,boardId,result,at=new Date().toISOString(
   return {...j,listingState:'closed',closedAt:at,closedReason:'delisted'};
  })};
  for(const job of result.jobs)next=addJob(next,job);
+ // PRD §8.8 (2026-11-09), the mirror of the closure pass above: presence in a
+ // complete response is an observation too, and it is the ONLY thing that makes
+ // a job live. Runs after the merge so it covers the rows this response just
+ // added as well as the records the page path created — a job she opened at a
+ // watched board used to stay `unknown` through every morning that board
+ // confirmed it, while the same response was trusted to close it.
+ next={...next,jobs:next.jobs.map(j=>{
+  if(!sameBoard(j)||!j.providerJobId||!identifiers.has(j.provider+':'+j.providerJobId))return j;
+  return {...j,listingState:'live',listingSeenAt:at,closedAt:null,closedReason:null,unmatchedReason:null};
+ })};
  return next;
 }

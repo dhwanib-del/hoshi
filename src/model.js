@@ -60,14 +60,21 @@ export function mergeJob(existing,next){
  // is recorded as a repost rather than silently restored (src/freshness.js).
  const timestamps=mergeTimestamps(existing,next.timestamps);
  const reposted=timestamps.repostedAt&&!existing.timestamps?.repostedAt;
- const listing=reposted?{listingState:'live',closedAt:null,closedReason:null}:{};
+ const listing=reposted?{listingState:'live',listingSeenAt:next.listingSeenAt||existing.listingSeenAt||null,closedAt:null,closedReason:null}:{};
+ // PRD §8.8: a listing state that an observation produced is not overwritten by
+ // a record that carries none. The page path wins on extracted fields (§8.5),
+ // but liveness and closure are observations about the BOARD, so a page capture
+ // arriving with the default `unknown` must not un-see this morning's poll.
+ const observed=x=>x?.listingSeenAt||x?.closedAt;
+ const held=observed(existing)&&!observed(next)
+  ?{listingState:existing.listingState,listingSeenAt:existing.listingSeenAt??null,closedAt:existing.closedAt??null,closedReason:existing.closedReason??null}:{};
  if(existing.origin==='page'&&next.origin==='discovery'){
   // PRD §8.5: the page record wins on populated fields; discovery only fills blanks.
   const patched={...existing};
   for(const [key,val] of Object.entries(next))if((patched[key]==null||patched[key]==='')&&val!=null)patched[key]=val;
   return {...patched,...listing,timestamps};
  }
- const result={...existing,...next,...listing,timestamps};
+ const result={...existing,...next,...held,...listing,timestamps};
  result.id=existing.id;result.createdAt=existing.createdAt;return result;
 }
 
@@ -91,11 +98,30 @@ export function gateState(job){
  return {state:'ranked',missing:[],why:'Eligibility and sponsorship verified by you'};
 }
 export const isRankable=job=>gateState(job).state==='ranked';
+// PRD §8.8 (2026-11-09). `live` is an observation — a complete board response
+// that contained this requisition — and the observation has an instant.
+// Invariant (17): listingState 'live' requires a non-null listingSeenAt, and a
+// record that arrives claiming liveness without one FAILS CLOSED to `unknown`
+// rather than keeping the claim. `unknown` is the no-claim state, so this
+// withdraws a claim instead of inventing one (Principle 5).
+export const LISTING_STALE_INTERVALS=2,POLL_INTERVAL_HOURS=24;
+export function listingStatus(job,now=new Date()){
+ const seen=job?.listingSeenAt?Date.parse(job.listingSeenAt):NaN;
+ if(job?.listingState==='closed')return {state:'closed',seenAt:job.closedAt||null,why:job.closedReason||'delisted'};
+ if(job?.listingState!=='live'||!Number.isFinite(seen))return {state:'unknown',seenAt:null,why:job?.unmatchedReason||'no complete board response has confirmed this listing'};
+ // §8.9's two-interval rule, DERIVED rather than stamped (invariant 13's
+ // shape): the stored value is the observation, and its age is computed, so
+ // nothing on the record goes false while nobody polls.
+ const hours=(now.getTime()-seen)/3600000;
+ if(hours>LISTING_STALE_INTERVALS*POLL_INTERVAL_HOURS)return {state:'unknown',seenAt:job.listingSeenAt,why:'last confirmed more than '+LISTING_STALE_INTERVALS+' polls ago'};
+ return {state:'live',seenAt:job.listingSeenAt,why:'listed in the board’s last complete response'};
+}
 export function addJob(state,job){
  if(!job.title||!job.company)throw Error('A job needs a real title and company.');
  const identity=jobIdentity(job);
  const at=state.jobs.findIndex(j=>j.identity===identity || (j.provider&&j.provider===job.provider&&j.providerJobId&&j.providerJobId===job.providerJobId));
- const record={...job,identity,listingState:job.listingState||'unknown'};
+ const claimed=job.listingState||'unknown';
+ const record={...job,identity,listingState:claimed==='live'&&!job.listingSeenAt?'unknown':claimed};
  if(at<0)return {...state,jobs:[mergeJob(null,record),...state.jobs]};
  const jobs=[...state.jobs];jobs[at]=mergeJob(jobs[at],record);return {...state,jobs};
 }

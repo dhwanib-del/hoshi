@@ -157,8 +157,11 @@ test('invariant (16): unmatched < floor <= adjacent < lane, as shares of role', 
 test('invariant (16): the band is named, and 0 says "not found" rather than "not yours"', () => {
   const profile = { roleLanes: ['UX Researcher'], locations: [], portfolioProjects: [] };
   assert.deepEqual(roleBand({ title: 'Senior UX Researcher' }, profile),
-    { points: ROLE_BANDS.lane, basis: 'lane', lane: 'UX Researcher', field: 'title' });
-  assert.equal(roleBand({ title: 'Product Designer II' }, profile).basis, 'adjacent');
+    { points: ROLE_BANDS.lane, basis: 'lane', lane: 'UX Researcher', laneTerm: null, field: 'title' });
+  // Adjacent is now a shared term with a lane SHE wrote (invariant 18), so a
+  // title sharing no word with any lane is unmatched rather than half-credited.
+  assert.equal(roleBand({ title: 'UX Writer' }, profile).basis, 'adjacent');
+  assert.equal(roleBand({ title: 'Product Designer II' }, profile).basis, 'unmatched');
   const miss = roleBand({ title: 'Member of Technical Staff' }, profile);
   assert.equal(miss.basis, 'unmatched');
   assert.equal(miss.points, 0);
@@ -182,4 +185,48 @@ test('§9.6: block 3 counts the titles no saved lane matched', () => {
   const brief = morningBrief(state, NOW);
   assert.equal(brief.unmatchedTitles, 2, 'both unrecognised titles are counted, not swallowed');
   assert.ok(brief.alsoOpen >= brief.unmatchedTitles);
+});
+
+// PRD §9.6 invariant (18), added 2026-11-10. §9.6's naming rule — the matched
+// lane is named in the score line or the points are not awarded — was checked at
+// the term and evaded at the MIDDLE band. `adjacent` was a fixed regex of UX-ish
+// titles living in src/scoring.js: 16 of 25, one point over the role floor,
+// printing "adjacent role title" and naming nothing. The top band obviously
+// names its lane and the bottom band obviously scores nothing, so the one in
+// between is where a term's naming rule goes unenforced.
+test('invariant (18): a nonzero role band names the lane that earned it', () => {
+  const profile = { roleLanes: ['UX Researcher', 'Product Designer'], locations: [], portfolioProjects: [] };
+  for (const title of ['Senior UX Researcher', 'UX Writer', 'Design Researcher', 'Product Design Lead']) {
+    const b = roleBand({ title }, profile);
+    if (b.points === 0) continue;
+    assert.ok(b.lane, title + ': a scored band must name a lane she wrote');
+    if (b.basis === 'adjacent') {
+      assert.ok(b.laneTerm, title + ': an adjacent band must name the shared term');
+      assert.ok(b.lane.toLowerCase().includes(b.laneTerm), 'the term comes from that lane');
+      assert.ok(title.toLowerCase().includes(b.laneTerm), 'and from this title');
+    }
+  }
+});
+
+test('invariant (18): the adjacent band is derived from her lanes, not held by Hoshi', () => {
+  const none = { roleLanes: [], locations: [], portfolioProjects: [] };
+  // The old regex scored 16 here — a floor-clearing band deaf to her profile.
+  for (const title of ['Product Designer II', 'UX Writer', 'Clinical Researcher']) {
+    const b = roleBand({ title }, none);
+    assert.equal(b.basis, 'unmatched', title + ' with no saved lanes is unmatched, not adjacent');
+    assert.equal(b.points, 0);
+  }
+  const job = { title: 'Clinical Researcher', company: 'Acme', location: '',
+    eligibility: 'eligible', authorization: 'confirmed' };
+  assert.equal(scoreJob(job, none, [], [], NOW).qualified, false,
+    'an unnameable near-match cannot clear the role floor');
+});
+
+test('invariant (18): an adjacent score line prints the word that earned it', () => {
+  const profile = { roleLanes: ['UX Researcher'], locations: [], portfolioProjects: [] };
+  const line = scoreJob({ title: 'UX Writer', company: 'Acme', location: '',
+    eligibility: 'eligible', authorization: 'confirmed' }, profile, [], [], NOW).lines[0];
+  assert.match(line, /shares “ux”/);
+  assert.match(line, /UX Researcher/);
+  assert.doesNotMatch(line, /^\+\d+ role · adjacent role title$/);
 });

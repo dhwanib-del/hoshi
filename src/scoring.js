@@ -91,14 +91,42 @@ export function portfolioMatch(job,profile){
  * about her chances. `unmatched` is "no lane was found in the posting's own
  * words", which is NOT "a role she cannot do"; the floor cannot tell them apart,
  * so the count of unmatched rows is surfaced rather than swallowed.
+ *
+ * PRD §9.6 invariant (18), added 2026-11-10. §9.6 says the matched lane is named
+ * in the score line or the points are not awarded — and the MIDDLE band could
+ * never satisfy that. `adjacent` was a fixed regex of UX-ish titles held in this
+ * file: it awarded 16 of 25, one point OVER the role floor, printed "adjacent
+ * role title", and named nothing. Two consequences, both run rather than argued:
+ * it scored 16 for a profile with NO saved lanes at all, so the term she is told
+ * she controls in Settings had a floor-clearing band deaf to her profile; and
+ * "Clinical Researcher" cleared the floor off the regex's `researcher`.
+ * So every nonzero band is DERIVED from a lane she wrote and carries the evidence
+ * that produced it, and a band that cannot name its evidence fails closed to
+ * `unmatched` — the no-claim state, countable in block 3, never a verdict.
  */
+const laneWords=s=>lower(s).split(/[^a-z0-9+#]+/).filter(Boolean);
+const roleEvidence=b=>b.basis==='lane'?(b.lane||null)
+ :b.basis==='adjacent'?(b.lane&&b.laneTerm?b.lane:null):null;
+function band(b){
+ // Fail closed, in invariant (17)'s shape: points without nameable evidence are
+ // withdrawn rather than kept. Principle 6 enforced per band, not per term.
+ return b.points>0&&!roleEvidence(b)
+  ?{points:ROLE_BANDS.unmatched,basis:'unmatched',lane:null,laneTerm:null,field:b.field}:b;
+}
 export function roleBand(job,profile){
- const title=lower(job.title),lanes=profile?.roleLanes||[];
- const lane=lanes.find(l=>l&&title.includes(lower(l)));
- if(lane)return {points:ROLE_BANDS.lane,basis:'lane',lane,field:'title'};
- if(/product design|ux |user experience|experience design|researcher|interaction design/.test(title))
-  return {points:ROLE_BANDS.adjacent,basis:'adjacent',lane:null,field:'title'};
- return {points:ROLE_BANDS.unmatched,basis:'unmatched',lane:null,field:'title'};
+ const title=lower(job.title),titleWords=new Set(laneWords(title));
+ const lanes=(profile?.roleLanes||[]).map(l=>String(l||'').trim()).filter(Boolean);
+ const lane=lanes.find(l=>title.includes(lower(l)));
+ if(lane)return band({points:ROLE_BANDS.lane,basis:'lane',lane,laneTerm:null,field:'title'});
+ // Adjacent is a SHARED TERM with a lane she wrote, so the line can print which
+ // word of which lane earned it and she can judge it (§9.2's move on an employer
+ // date: print the thing rather than guess a window). `[assumption]` that a whole
+ // shared word is the right adjacency test — it is a judgment, like the 0.64.
+ for(const l of lanes){
+  const laneTerm=laneWords(l).find(w=>titleWords.has(w));
+  if(laneTerm)return band({points:ROLE_BANDS.adjacent,basis:'adjacent',lane:l,laneTerm,field:'title'});
+ }
+ return {points:ROLE_BANDS.unmatched,basis:'unmatched',lane:null,laneTerm:null,field:'title'};
 }
 
 export function scoreJob(job,profile,people=[],events=[],now=new Date()){
@@ -129,7 +157,7 @@ export function scoreJob(job,profile,people=[],events=[],now=new Date()){
  return {total,rankable,gate:gate.state,missingChecks:gate.missing,roleFit,
   // §9.6: the band and the lane that produced it, so a surface can say "no lane
   // matched this title" rather than implying the role is wrong.
-  roleFitBasis:role.basis,roleLane:role.lane,roleField:role.field,
+  roleFitBasis:role.basis,roleLane:role.lane,roleLaneTerm:role.laneTerm,roleField:role.field,
   tier:tier.tier,contact:tier.contact,promoted,qualified,
   // The version travels with the score, not with whoever writes the row: a
   // score and the table that produced it are one fact (PRD §10.5 invariant 14).
@@ -141,7 +169,9 @@ export function scoreJob(job,profile,people=[],events=[],now=new Date()){
   // The panel led with a score box and buried all of this behind a disclosure,
   // which made a scored job and an unscored one look identical.
   terms:[
-   {key:'role',points:roleFit,note:direct?role.lane:partial?'adjacent role':'no saved lane found in the title'},
+   // Invariant (18): a nonzero band names the lane that earned it. `adjacent`
+   // names the shared word too, because that word is the whole of its claim.
+   {key:'role',points:roleFit,note:direct?role.lane:partial?role.lane+' · “'+role.laneTerm+'”':'no saved lane found in the title'},
    {key:'eligibility',points:eligibility,note:job.eligibility||'unverified'},
    {key:'authorization',points:authorization,note:job.authorization||'unverified'},
    {key:'connection',points:POINTS[tier.tier],note:tier.contact?.name||null},
@@ -150,7 +180,9 @@ export function scoreJob(job,profile,people=[],events=[],now=new Date()){
    {key:'location',points:location,note:location?'your locations':null}
   ],
   reason:closed?'Listing closed — no longer accepting applications':gate.state==='excluded'?gate.why:gate.state==='held'?gate.why:roleFit<ROLE_FLOOR?'Below '+ROLE_FLOOR+'/'+WEIGHTS.role+' role-fit floor':!promoted?'Below priority threshold':'Qualified',
-  lines:['+'+roleFit+' role · '+(direct?'matches your saved lane “'+role.lane+'”':partial?'adjacent role title':'no saved lane found in this title — not a judgment about the role'),
+  lines:['+'+roleFit+' role · '+(direct?'matches your saved lane “'+role.lane+'”'
+    :partial?'shares “'+role.laneTerm+'” with your saved lane “'+role.lane+'” — not the lane itself'
+    :'no saved lane found in this title — not a judgment about the role'),
     '+'+eligibility+' eligibility · '+(job.eligibility||'not verified'),
     '+'+authorization+' work authorization · '+(job.authorization||'not verified'),
     '+'+POINTS[tier.tier]+' connection · '+tier.reason,

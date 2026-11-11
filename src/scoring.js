@@ -42,6 +42,26 @@ export const ROLE_BANDS=Object.freeze({
 });
 export const SOFT_BLOCK=WEIGHTS.freshness+WEIGHTS.portfolio+WEIGHTS.location;
 const lower=s=>String(s||'').toLowerCase();
+const shortDate=x=>new Date(x).toLocaleDateString(undefined,{month:'short',day:'numeric'});
+// PRD §9.2 invariant (19), added 2026-11-11. The tier belongs to the contact and
+// the event log's grain is the thread, so "21 days since the thread's outreach
+// row" had as many answers as she has threads with that person — and reading the
+// LATEST send made the clock hers to restart: one new send about a second opening
+// put a contact who had been silent for 40 days back at C2, and §7.3's decaying
+// row went quiet on the same event. One more unanswered message is more evidence
+// the path is cold, not less, so decay is monotone absent a reply: the clock runs
+// from the EARLIEST unanswered thread and no later send restores the tier.
+export const DECAY_DAYS=21;
+export const COOLING_LEAD_DAYS=3;
+export function decayClock(contactId,events,now=new Date()){
+ const replied=events.some(e=>e.kind==='reply'&&e.contactId===contactId);
+ const messages=events.filter(e=>e.kind==='outreach'&&e.contactId===contactId);
+ const opens=messages.filter(e=>e.step==='sent');
+ if(replied||!opens.length)return {replied,first:null,days:0,messages:messages.length,spent:false};
+ const first=opens.reduce((a,b)=>new Date(a.at)<=new Date(b.at)?a:b);
+ const days=(now-new Date(first.at))/86400000;
+ return {replied,first,days,messages:messages.length,spent:days>DECAY_DAYS};
+}
 export function tierFor(company,people,events,now=new Date()){
  const matches=people.filter(p=>{
   if(!p.name||!p.origin)return false;
@@ -50,14 +70,19 @@ export function tierFor(company,people,events,now=new Date()){
  });
  let best={tier:'C0',contact:null,reason:'Nobody found at this company'};
  for(const p of matches){
-  const replies=events.filter(e=>e.kind==='reply'&&e.contactId===p.id);
-  const sends=events.filter(e=>e.kind==='outreach'&&e.contactId===p.id&&e.step==='sent');
+  const clock=decayClock(p.id,events,now);
   let tier='C2';
-  if(replies.length)tier='C3';
-  else if(sends.length&&((now-new Date(sends.at(-1).at))/86400000)>21)tier='C1';
+  if(clock.replied)tier='C3';
+  else if(clock.spent)tier='C1';
   else if(p.rankSource==='alumni'&&!p.saved)tier='C1';
   if(tier==='C1'&&!p.origin)continue;
-  if(POINTS[tier]>POINTS[best.tier])best={tier,contact:p,reason:p.name+' · '+(p.sharedContext||p.origin)+' · '+(tier==='C3'?'replied':tier==='C2'?'saved contact':'from your alumni list / cooled after 21 days')};
+  // Invariant (19)'s display half: a spent claim prints the date that spent it
+  // rather than asserting a cooled tier (§9.2's move on an employer date).
+  const why=tier==='C3'?'replied'
+   :tier==='C2'?'saved contact'
+   :clock.spent?'no reply since '+shortDate(clock.first.at)+', '+clock.messages+(clock.messages===1?' send':' sends')
+   :'from your alumni list, not saved';
+  if(POINTS[tier]>POINTS[best.tier])best={tier,contact:p,reason:p.name+' · '+(p.sharedContext||p.origin)+' · '+why};
  }
  return best;
 }
@@ -196,10 +221,16 @@ export function conversationBrief(state,now=new Date()){
   const sends=state.events.filter(e=>e.kind==='outreach'&&e.contactId===p.id);
   const replies=state.events.filter(e=>e.kind==='reply'&&e.contactId===p.id);
   const lastSend=sends.at(-1),lastReply=replies.at(-1);
+  const clock=decayClock(p.id,state.events,now);
   let why=null,priority=9;
   if(lastReply&&(!lastSend||new Date(lastReply.at)>new Date(lastSend.at))){why='Reply waiting for your response';priority=0;}
   else if(lastSend&&!lastReply&&sends.length===1&&(now-new Date(lastSend.at))/86400000>=7){why='Follow-up due · 7+ days since your message';priority=1;}
-  else if(lastSend&&!lastReply&&(now-new Date(lastSend.at))/86400000>=18&&(now-new Date(lastSend.at))/86400000<21){why='Connection cooling · nearly 21 days';priority=3;}
+  // §7.3's decaying row reads §9.2's clock rather than her last keystroke: before
+  // invariant (19) this fired on the most recent send, so following up on day 20
+  // moved the warning to day 38 and the tier never dropped. The window is the
+  // last three days the claim is alive, measured on the earliest unanswered thread.
+  else if(!clock.replied&&clock.first&&clock.days>=DECAY_DAYS-COOLING_LEAD_DAYS&&!clock.spent){
+   why='Connection cooling · no reply since '+shortDate(clock.first.at);priority=3;}
   else if(!lastSend&&state.jobs.some(j=>j.company===(p.currentEmployer||p.company)&&j.listingState!=='closed')){why='Role at their company';priority=2;}
   if(why&&p.name&&p.origin)items.push({contact:p,why,priority});
  }

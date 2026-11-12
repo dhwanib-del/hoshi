@@ -1,4 +1,4 @@
-import {KEY,DEFAULTS,stateFrom,asId,addJob,appendEvent,mayMarkApplied,markOutcome,saveAnswer,safeProfile,usableAnswer} from './model.js';
+import {KEY,DEFAULTS,PROTECTED,stateFrom,asId,addJob,appendEvent,mayMarkApplied,markOutcome,saveAnswer,safeProfile,usableAnswer} from './model.js';
 import {listJobs,applyBoardResult} from './discovery.js';
 import {captureCurrentPage} from './capture.js';
 import {inspectFields,fillReviewed} from './autofill.js';
@@ -112,7 +112,7 @@ async function handle(message){
    if(!job)throw Error('Save this job before reviewing form fields');
    const tab=await getCurrentTab();
    if(!job.applyUrl||new URL(job.applyUrl).origin!==new URL(tab.url).origin)throw Error('Open the saved job on the same employer site');
-   const [result]=await chrome.scripting.executeScript({target:{tabId:tab.id},func:inspectFields});
+   const [result]=await chrome.scripting.executeScript({target:{tabId:tab.id},func:inspectFields,args:[PROTECTED.source]});
    if(result?.result?.error)throw Error(result.result.error);
    const state=await load();
    const proposals=[];
@@ -137,7 +137,7 @@ async function handle(message){
     if(usable.fill&&p.approved===true)pairs.push({selector:p.selector,label:p.label,answer:usable.value,approved:true});
    }
    if(!pairs.length)return {filled:0,errors:['No eligible fields approved']};
-   const [filled]=await chrome.scripting.executeScript({target:{tabId:tab.id},func:fillReviewed,args:[pairs]});
+   const [filled]=await chrome.scripting.executeScript({target:{tabId:tab.id},func:fillReviewed,args:[pairs,PROTECTED.source]});
    return filled?.result||{filled:0,errors:['No result']};
   }
   case 'CLEAR_ALL':throw Error('Hoshi does not wipe your records from a single click');

@@ -11,9 +11,30 @@ export const DEFAULTS=Object.freeze({
    {name:'Amazon Family research',tags:['family','consumer','marketplace','e-commerce','retail']},
    {name:'MaizeTix mobile optimization',tags:['mobile','ticketing','conversion','checkout','performance']}
   ]},
- jobs:[],people:[],boards:[],answers:[],events:[],settings:{},lastBriefDate:null
+ jobs:[],people:[],boards:[],answers:[],answersWithdrawn:0,events:[],settings:{},lastBriefDate:null
 });
-export const PROTECTED=/\b(race|ethnicity|gender|sex|disability|veteran|birth.?date|date.?of.?birth|sexual.?orientation|religion)\b/i;
+// The protected-group guard. Its WORDING COVERAGE is an assumption and always
+// will be: a deny-list fails open, so a phrasing it does not carry is stored
+// and then filled by the exact-match rule. The four wordings an integration
+// vendor calls typical (gender / race-ethnicity / protected veteran /
+// disability) were all caught by the old list, which is exactly why its gaps
+// survived -- the list and the test that covered it were written from the same
+// four. So what the tests assert is the MECHANISM, not the list: invariant (8)
+// holds over the whole store, and widening this regex withdraws what it has
+// already stored (bankWithdrawals, re-run by stateFrom on every read).
+// Deliberately absent: citizenship, national origin and work authorization.
+// Sponsorship is the employer-independent answer PRD 11 exists to reuse.
+export const PROTECTED=/\b(rac(e|ial)|ethnic(ity)?|hispanic|latin[oax]|gender|sex|sexual(ity)?|sexual.?orientation|lgbt\w*|transgender|pronouns?|disab(led|ility|ilities)|accommodations?|impairment|(health|medical)[ -]?condition|chronic[ -]?(illness|condition)|veterans?|military[ -]?service|birth.?date|date.?of.?birth|age|religio(n|us)|caste|marital|married|pregnan(t|cy))\b/i;
+// Invariant (8) over the DATA rather than over the schema. The bank's keys are
+// fixed, so Principle 3's walk finds no protected key by construction and
+// proves nothing: the category lives in the VALUE of `question`. The count is
+// stated and the question text is never kept -- printing a withdrawn question
+// back would re-store the thing being refused.
+export function bankWithdrawals(answers=[]){
+ const kept=[],withdrawn=[];
+ for(const a of answers)(PROTECTED.test(a?.question||'')?withdrawn:kept).push(a);
+ return {kept,withdrawn:withdrawn.length};
+}
 export const asId=()=>globalThis.crypto?.randomUUID?.() || String(Date.now())+'-'+Math.random().toString(36).slice(2);
 export const cleanText=(value,max=500)=>String(value??'').trim().slice(0,max);
 export function stateFrom(input){
@@ -36,6 +57,13 @@ export function stateFrom(input){
    discoveredAt:job.createdAt||null,
    repostedAt:null}};
  });
+ // The protected-group guard is re-run on every read, not only at the write
+ // site, so widening it withdraws answers stored under a narrower version
+ // instead of grandfathering them. Possible here and not for weightsVersion
+ // (PRD 10.5) because the bank is current state rather than append-only.
+ const bank=bankWithdrawals(state.answers);
+ state.answers=bank.kept;
+ state.answersWithdrawn=(Number(input?.answersWithdrawn)||0)+bank.withdrawn;
  return state;
 }
 export function safeProfile(updates){

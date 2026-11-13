@@ -324,10 +324,37 @@ export const POPULATION=Object.freeze({
 // direction to a rate; once a rate is segmented the direction is a property of
 // the segment, so the caller states it and the population only names itself.
 export function populationRate(key,rows,hit,skew){
- const p=POPULATION[key];
+ const p=typeof key==='string'?POPULATION[key]:key;
  if(!p?.label)throw Error('A rate needs a population that can name itself (invariant 15)');
  const own=rows.filter(p.of),k=own.filter(hit).length;
- return {...rate(k,own.length,'Of '+p.label),population:key,k,n:own.length,skew};
+ return {...rate(k,own.length,'Of '+p.label),population:typeof key==='string'?key:p.label,k,n:own.length,skew};
+}
+// PRD §10.2 and §10.4, added 2026-11-13 (B-27). A tier population is built from
+// the same predicate that names it, so a tier label cannot describe a bucket it
+// did not select — invariant (15) at the tier grain. Hoshi's arm only: her own
+// entries carry no tier (invariant 9), so they are filtered out here rather
+// than becoming a fifth untiered bucket.
+export const TIERS=Object.freeze(['C3','C2','C1','C0']);
+export function tierPopulation(t){
+ return Object.freeze({of:x=>x.source==='hoshi'&&(x.personAttached?.tier||'C0')===t,
+  label:t+' applications Hoshi filled'});
+}
+// The by-tier response rate IS displayable, and the figure §10.4 refused it
+// with was the wrong one. 141 is the n for a 5% → 15% move; the gap §9.1's
+// weight is sized against is §1's 40–65% against 2–8%, where two 95% intervals
+// separate at 7–27 rows per arm at equal n and at 1–4 C3 rows against an
+// abundant C0 arm. So rule 1's floor of 10 is what binds, and it is a display
+// rule rather than a power calculation. What is unavailable is ATTRIBUTION: she
+// chose which applications carried a person, so rule 3's disjointness test
+// clears exactly when the thesis is being measured and licenses nothing causal.
+// Invariant (20): no comparison is computed here, and the refusal is attached
+// to the set rather than left to the copy.
+export function byTier(rows,hit,skew){
+ return {metric:'A response, by connection tier as recorded at submit',kind:'self-selected',
+  pooled:null,comparison:null,
+  attribution:'You chose which applications carried a person, so a gap between these tiers is a difference and never the effect of the connection. Only a cohort could separate the two (§10.4).',
+  note:'Hoshi’s rows only — your own entries carry no tier (invariant 9).',
+  segments:TIERS.map(t=>populationRate(tierPopulation(t),rows,hit,skew))};
 }
 // PRD §10.3 rule 11, amended 2026-11-06. Segmentation by `source` binds exactly
 // two rates — person-attached, and response over `submission` rows — and neither
@@ -362,6 +389,8 @@ export function activity(state,now=new Date()){
     {hoshi:'Reads low: a row written at review for an application never sent can only ever look like a failure.',
      user:'Reads high: the same entry selection, on the other side of the funnel.'},
     'These two point in opposite directions, so a pooled percentage would have no direction left to state.'),
+   byTier(mature,x=>answered.has(x.jobId),
+    'Reads low: a row written at review for an application never sent can only ever look like a failure.'),
    {metric:'A reply to outreach you sent',kind:'single',pooled:null,
     note:'One regime: every outreach and reply row is yours to assert, so there is nothing here to segment (rule 11).',
     segments:[populationRate('marked',out,x=>responded.has(x.threadId),

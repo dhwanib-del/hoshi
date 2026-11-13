@@ -170,6 +170,7 @@ function activityView(){
  sec('Rates are estimates','95% Wilson interval, never pooled across two regimes')+
  a.rates.map(r=>'<div class="card"><strong>'+esc(r.metric)+'</strong>'+
   r.segments.map(s=>'<div class="rate"><strong>'+esc(s.summary)+'</strong><small>'+esc(s.label)+'. '+esc(s.skew)+'</small></div>').join('')+
+  (r.attribution?'<p class="micro muted"><strong>A difference, not an effect.</strong> '+esc(r.attribution)+'</p>':'')+
   '<p class="micro muted">'+esc(r.note)+'</p></div>').join('')+
  '<div class="card" style="margin-top:10px"><strong>'+(a.immature.hoshi+a.immature.user)+' applications too recent</strong><p class="micro muted">'+a.immature.hoshi+' of Hoshi\'s rows and '+a.immature.user+' of yours are younger than 21 days and stay out of the response-rate denominators. Missing replies and unconfirmed external submissions are not observed.'+(a.weightTables.length>1?' Hoshi\'s rows span '+a.weightTables.length+' weight tables and are not segmented by table.':'')+'</p></div>'+
  sec('Your record','Append-only history')+

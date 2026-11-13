@@ -57,12 +57,17 @@ test('invariant (15): a population that cannot name itself is refused, not label
 test('rule 11: a segmented rate is never shown pooled', () => {
   const a = activity(state([hoshiRow('h1', { attached: true }), userRow('u1')]), now);
   for (const r of a.rates) assert.equal(r.pooled, null, r.metric + ' has no pooled percentage');
-  assert.equal(a.rates[0].kind, 'segmented');
-  assert.equal(a.rates[1].kind, 'segmented');
+  // Found by metric rather than by position: 2026-11-13 added the by-tier set
+  // between the response rate and the reply rate, and a positional assertion
+  // would have read as a rule-11 failure.
+  const by = m => a.rates.find(r => r.metric === m);
+  assert.equal(by('A person attached before you submitted').kind, 'segmented');
+  assert.equal(by('A response, 21+ days after submitting').kind, 'segmented');
   // Reply rate is one regime: outreach and reply rows carry no `source`
   // discriminator, because every one of them is hers to assert.
-  assert.equal(a.rates[2].kind, 'single');
-  assert.equal(a.rates[2].segments.length, 1);
+  const reply = by('A reply to outreach you sent');
+  assert.equal(reply.kind, 'single');
+  assert.equal(reply.segments.length, 1);
 });
 
 test('rule 11 falls back to rule 1, not to a pooled percentage with a caveat', () => {

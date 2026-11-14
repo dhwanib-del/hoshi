@@ -215,6 +215,21 @@ export function scoreJob(job,profile,people=[],events=[],now=new Date()){
     '+'+folio.points+' portfolio · '+folio.why,
     '+'+location+' location · '+(location?'matches a location you listed':'not matched to your locations')]};
 }
+// PRD §7.1's caps, in one place: the panel used to print "/ 3" as a literal
+// beside a list this module sliced, which is invariant (13)'s least-derived
+// consumer one surface over. `[assumption]` the 3 and the 5 specifically.
+export const BRIEF_CAPS={conversations:3,promoted:5};
+/**
+ * Every conversation that qualifies this morning, ordered, and NOT capped —
+ * §7.3's block states how many it did not show, so the cap cannot live in here
+ * (invariant 21). `expires` marks a reason that is gone tomorrow rather than
+ * waiting: a reply, a due follow-up and an open role at their company all
+ * persist until she acts, while the cooling row is alive for exactly the last
+ * COOLING_LEAD_DAYS mornings of §9.2's clock and is then spent for good
+ * (invariant 19). So an expiring reason outranks a persistent one of lower
+ * priority — the cooling row above "role at their company", which is the only
+ * purely opportunistic type.
+ */
 export function conversationBrief(state,now=new Date()){
  const items=[];
  for(const p of state.people){
@@ -222,7 +237,7 @@ export function conversationBrief(state,now=new Date()){
   const replies=state.events.filter(e=>e.kind==='reply'&&e.contactId===p.id);
   const lastSend=sends.at(-1),lastReply=replies.at(-1);
   const clock=decayClock(p.id,state.events,now);
-  let why=null,priority=9;
+  let why=null,priority=9,expires=false;
   if(lastReply&&(!lastSend||new Date(lastReply.at)>new Date(lastSend.at))){why='Reply waiting for your response';priority=0;}
   else if(lastSend&&!lastReply&&sends.length===1&&(now-new Date(lastSend.at))/86400000>=7){why='Follow-up due · 7+ days since your message';priority=1;}
   // §7.3's decaying row reads §9.2's clock rather than her last keystroke: before
@@ -230,20 +245,37 @@ export function conversationBrief(state,now=new Date()){
   // moved the warning to day 38 and the tier never dropped. The window is the
   // last three days the claim is alive, measured on the earliest unanswered thread.
   else if(!clock.replied&&clock.first&&clock.days>=DECAY_DAYS-COOLING_LEAD_DAYS&&!clock.spent){
-   why='Connection cooling · no reply since '+shortDate(clock.first.at);priority=3;}
-  else if(!lastSend&&state.jobs.some(j=>j.company===(p.currentEmployer||p.company)&&j.listingState!=='closed')){why='Role at their company';priority=2;}
-  if(why&&p.name&&p.origin)items.push({contact:p,why,priority});
+   why='Connection cooling · no reply since '+shortDate(clock.first.at);priority=2;expires=true;}
+  else if(!lastSend&&state.jobs.some(j=>j.company===(p.currentEmployer||p.company)&&j.listingState!=='closed')){why='Role at their company';priority=3;}
+  if(why&&p.name&&p.origin)items.push({contact:p,why,priority,expires});
  }
- return items.sort((a,b)=>a.priority-b.priority).slice(0,3);
+ // Expiring first at equal priority, so the tiebreak never costs a claim either.
+ return items.sort((a,b)=>a.priority-b.priority||(b.expires?1:0)-(a.expires?1:0));
+}
+/**
+ * §7.3's block 1: the capped rows, plus the number the cap did not show and how
+ * many of those expire today. Invariant (21): both counts come from the same
+ * predicate that built the list (invariant 15's shape at the brief's grain), so
+ * no figure here can describe a set it did not select.
+ */
+export function conversationsBlock(state,now=new Date()){
+ const all=conversationBrief(state,now),cap=BRIEF_CAPS.conversations;
+ const rows=all.slice(0,cap),dropped=all.slice(cap);
+ return {rows,cap,qualified:all.length,notShown:dropped.length,
+  expiringNotShown:dropped.filter(r=>r.expires).length};
 }
 export function morningBrief(state,now=new Date()){
- const conversations=conversationBrief(state,now);
+ const block=conversationsBlock(state,now),conversations=block.rows;
  const ranked=state.jobs.map(job=>({job,score:scoreJob(job,state.profile,state.people,state.events,now)})).filter(x=>x.job.listingState!=='closed');
- const promoted=ranked.filter(x=>x.score.promoted).sort((a,b)=>b.score.total-a.score.total||POINTS[b.score.tier]-POINTS[a.score.tier]||a.job.company.localeCompare(b.job.company)).slice(0,5);
+ const promoted=ranked.filter(x=>x.score.promoted).sort((a,b)=>b.score.total-a.score.total||POINTS[b.score.tier]-POINTS[a.score.tier]||a.job.company.localeCompare(b.job.company)).slice(0,BRIEF_CAPS.promoted);
  // §9.6: block 3 states how many open jobs left the ranked set because no saved
  // lane was found in the title, as a number (§10.3 rule 6's shape). A silent
  // exclusion only has to be countable — not listed, and never scored.
  return {conversations,promoted,alsoOpen:ranked.filter(x=>!x.score.promoted).length,
+  // §7.3 invariant (21): block 2's overflow falls to block 3 and is counted
+  // there; block 1's fell nowhere, so the fourth person due this morning was
+  // dropped in silence while the header read "3 / 3".
+  conversationsNotShown:block.notShown,conversationsExpiring:block.expiringNotShown,
   unmatchedTitles:ranked.filter(x=>x.score.roleFitBasis==='unmatched').length};
 }
 /**

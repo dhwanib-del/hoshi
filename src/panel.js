@@ -1,4 +1,4 @@
-import {morningBrief,scoreJob,activity,freshJobs,coverage} from './scoring.js';
+import {morningBrief,scoreJob,activity,freshJobs,coverage,BRIEF_CAPS} from './scoring.js';
 import {stardust,jobStage,cleanText,listingStatus} from './model.js';
 import {describeAge,recencyOf,UNVERIFIED_LABEL} from './freshness.js';
 import {parseBoardUrl,PROVIDERS} from './discovery.js';
@@ -129,9 +129,16 @@ function orbit(){
  const brief=morningBrief(state);const s=stardust(state.events);
  return '<div class="hero"><div class="eyebrow">Your daily orbit</div><h1>Good things start with a conversation.</h1><p>Find the person. Find the role. Make the introduction count.</p><span class="stardust">✦ '+s+' stardust today</span></div>'+
  '<div class="action-row">'+button('＋ Capture current job','capture','','')+button('Add a person','show-add-person','','ghost')+'</div>'+
- sec("Today's conversations",brief.conversations.length+' / 3')+
+ // PRD §7.3 invariant (21): "3 / 3" is how full the cap is, which reads as
+ // completeness exactly on the mornings most was hidden. The cap's overflow is
+ // a number, and an expiring reason is named, because a row dropped here exists
+ // on no other surface — §7.4 refuses the see-all escape the category uses.
+ sec("Today's conversations",brief.conversationsNotShown
+  ?brief.conversations.length+' shown · '+brief.conversationsNotShown+' not shown'
+  :brief.conversations.length+' of '+BRIEF_CAPS.conversations)+
  (brief.conversations.length?'<div class="stack">'+brief.conversations.map(x=>personCard(x.contact,x.why)).join('')+'</div>':empty('💬','No conversations due yet',state.people.length===0?'0 people saved. Add a contact from CareerLink to begin.':'0 replies waiting or follow-ups due. Open People to start a conversation.'))+
- sec('Jobs worth your morning',brief.promoted.length+' / 5')+
+ (brief.conversationsNotShown?'<p class="micro muted" style="margin:6px 0 0">'+brief.conversationsNotShown+' more due today and not shown here'+(brief.conversationsExpiring?' — '+brief.conversationsExpiring+' of them a connection claim that expires today (§9.2). Open People.':'. Open People.')+'</p>':'')+
+ sec('Jobs worth your morning',brief.promoted.length+' of '+BRIEF_CAPS.promoted)+
  (brief.promoted.length?'<div class="stack">'+brief.promoted.map(x=>jobCard(x.job,x.score)).join('')+'</div>':empty('✦','No promoted jobs yet','0 jobs meet the role-fit floor and promotion gate. Add a role or watch a company board.'))+
  '<div class="card" style="margin-top:11px"><div class="card-title">'+brief.alsoOpen+' also open</div><p class="micro muted" style="margin:4px 0 0">Other saved jobs are available under Jobs; none is promoted without evidence.'+
  // PRD §9.6: an unmatched title is "no saved lane found", not "not your role",

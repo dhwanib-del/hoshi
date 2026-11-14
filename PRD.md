@@ -1,6 +1,6 @@
 # Hoshi — Product Requirements
 
-**Living document.** Improved daily by the Hoshi Loop. Last substantive revision: 2026-11-13.
+**Living document.** Improved daily by the Hoshi Loop. Last substantive revision: 2026-11-14.
 
 ---
 
@@ -92,7 +92,7 @@ Renders in Orbit. It sits here, ahead of the engines, because it is the only sur
 
 ### 7.1 Three blocks, fixed order, hard caps
 
-1. **Today's conversations** — people to message or follow up with. Max 3.
+1. **Today's conversations** — people to message or follow up with. Max 3, stating the number it did not show.
 2. **Jobs worth your morning** — promoted jobs, each carrying its §9.4 score line. Max 5.
 3. **Also open at companies you're watching** — one collapsed line with a count.
 
@@ -104,7 +104,9 @@ A job enters block 2 only if role fit ≥ 15 of 25 (§9.3 invariant 1) **and** e
 
 ### 7.3 Block 1 rows come from Hoshi's stores, never from a model
 
-Each row names a person, the shared context, and why today. Four types, in priority order: **reply waiting** (they answered, the user has not); **follow-up due** (sent ≥ 7 days ago, no reply, not yet followed up once — `[assumption]` the 7 days); **new role where a C2 or better already exists** (the job is the excuse, the conversation is the point); **decaying** (the *earliest* unanswered thread is at day 18 of §9.2's 21-day clock — a follow-up is a bid for the reply that would restore the tier, never a way to hold the points, since sending does not reset that clock). A row that cannot name a person *and* cite a stored reason is not shown, which puts Principles 2 and 6 on the brief itself and not only on generated text.
+Each row names a person, the shared context, and why today. Four types, in priority order: **reply waiting** (they answered, the user has not); **follow-up due** (sent ≥ 7 days ago, no reply, not yet followed up once — `[assumption]` the 7 days); **decaying** (the *earliest* unanswered thread is at day 18 of §9.2's 21-day clock — a follow-up is a bid for the reply that would restore the tier, never a way to hold the points, since sending does not reset that clock); **new role where a C2 or better already exists** (the job is the excuse, the conversation is the point). A row that cannot name a person *and* cite a stored reason is not shown, which puts Principles 2 and 6 on the brief itself and not only on generated text.
+
+**The cap is a silent exclusion, and this is the one block where nothing counted it.** Added 2026-11-14. Block 3 states what it did not promote and how many jobs left on an unmatched title (§9.6); block 1 dropped the fourth person due this morning with no number anywhere, under a header reading `3 / 3` — which is how full the cap is, and reads as completeness exactly when the most has been hidden. **The order was also the inverse of what being dropped costs.** A reply waiting, a due follow-up and an open role at their company all persist until she acts or the listing closes; **decaying** is alive for exactly the last three mornings of §9.2's clock and under invariant (19) is then spent for good — so the only expiring row sat last and was dropped first. Run rather than argued: with three replies waiting and one contact at day 19 of a thread she had already followed up, the cooling row rendered on none of its three mornings and the tier fell C2 → C1 on day 22, four points, with the header unchanged throughout. **So the cooling row rises above *new role* in the order above, and block 1 states how many qualifying conversations it did not show and how many of those expire today** (§10.3 rule 6's shape). The stronger rule — never drop an expiring row at all — is refused: three replies waiting is honestly the better morning, and the count is what carries the claim that dies. **The category owes no such number, because its bound is a pacing device rather than a budget:** Simplify's *"daily curated set of job recommendations"* lets the user *"refresh to generate more recommendations"* when the batch runs out, and *"reviewing at least five matches a day for a 7-day streak unlocks a recruiter highlight"* ([Simplify help](https://help.simplify.jobs/articles/2166608-using-your-job-matches), the vendor documenting its own product, so `[assumption]` past what it claims to do) — more is one click away, and the surface is tuned to the number of rows viewed, which is §1's wrong number arriving on a daily brief. Hoshi's caps bound the list itself and §7.4 refuses the see-all escape, so a row dropped here exists on no other surface and the only honest alternative to a link is a number. **Invariant (21)**, in §9.3's CI-blocking shape: a capped block derives its not-shown count from the same predicate that built the list (invariant 15's shape at the brief's grain), states how many of the hidden rows carry a reason that expires, and never drops an expiring reason in favour of a persistent one of lower priority.
 
 ### 7.4 Counts only, and an empty state with a number in it
 

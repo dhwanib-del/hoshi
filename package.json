@@ -5,6 +5,6 @@
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.mjs sync/*.test.mjs",
-    "check": "node --check src/model.js && node --check src/scoring.js && node --check src/discovery.js && node --check src/background.js && node --check src/panel.js && node --check src/capture.js"
+    "check": "node --check src/model.js && node --check src/freshness.js && node --check src/scoring.js && node --check src/discovery.js && node --check src/background.js && node --check src/panel.js && node --check src/capture.js && node --check src/autofill.js"
   }
 }

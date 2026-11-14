@@ -1,4 +1,4 @@
-import {KEY,DEFAULTS,stateFrom,asId,addJob,appendEvent,mayMarkApplied,markOutcome,saveAnswer,safeProfile,usableAnswer} from './model.js';
+import {KEY,DEFAULTS,PROTECTED,stateFrom,asId,addJob,appendEvent,mayMarkApplied,markOutcome,saveAnswer,safeProfile,usableAnswer} from './model.js';
 import {listJobs,applyBoardResult} from './discovery.js';
 import {captureCurrentPage} from './capture.js';
 import {inspectFields,fillReviewed} from './autofill.js';
@@ -65,7 +65,13 @@ async function handle(message){
   case 'MARK_SUBMITTED':return mutator(s=>{
    const job=s.jobs.find(x=>x.id===data.jobId);
    if(!job)throw Error('Job not found');
-   return mayMarkApplied(s,data.jobId,{confirm:data.confirm===true,source:'hoshi',score:scoreJob(job,s.profile,s.people,s.events)});
+   const score=scoreJob(job,s.profile,s.people,s.events);
+   // PRD §10.5: a `source:'hoshi'` row carries the score as at submit. Invariant
+   // (12) means a held job never had one — so marking it applied writes B-21's
+   // `source:'user'` arm instead of inventing a score after the event (rule 8).
+   return score.rankable
+    ? mayMarkApplied(s,data.jobId,{confirm:data.confirm===true,source:'hoshi',score})
+    : mayMarkApplied(s,data.jobId,{confirm:data.confirm===true,source:'user'});
   });
   case 'OUTCOME':return mutator(s=>markOutcome(s,data.jobId,data.stage));
   case 'SENT':return mutator(s=>{
@@ -106,7 +112,7 @@ async function handle(message){
    if(!job)throw Error('Save this job before reviewing form fields');
    const tab=await getCurrentTab();
    if(!job.applyUrl||new URL(job.applyUrl).origin!==new URL(tab.url).origin)throw Error('Open the saved job on the same employer site');
-   const [result]=await chrome.scripting.executeScript({target:{tabId:tab.id},func:inspectFields});
+   const [result]=await chrome.scripting.executeScript({target:{tabId:tab.id},func:inspectFields,args:[PROTECTED.source]});
    if(result?.result?.error)throw Error(result.result.error);
    const state=await load();
    const proposals=[];
@@ -131,7 +137,7 @@ async function handle(message){
     if(usable.fill&&p.approved===true)pairs.push({selector:p.selector,label:p.label,answer:usable.value,approved:true});
    }
    if(!pairs.length)return {filled:0,errors:['No eligible fields approved']};
-   const [filled]=await chrome.scripting.executeScript({target:{tabId:tab.id},func:fillReviewed,args:[pairs]});
+   const [filled]=await chrome.scripting.executeScript({target:{tabId:tab.id},func:fillReviewed,args:[pairs,PROTECTED.source]});
    return filled?.result||{filled:0,errors:['No result']};
   }
   case 'CLEAR_ALL':throw Error('Hoshi does not wipe your records from a single click');

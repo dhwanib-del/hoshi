@@ -21,7 +21,7 @@ test('no submission without a human confirmation',()=>{
 });
 test('job stage derives only from append-only events',()=>{
  let s=addJob(stateFrom(),{title:'UX Designer',company:'Example'});
- const id=s.jobs[0].id;s=mayMarkApplied(s,id,{confirm:true});
+ const id=s.jobs[0].id;s=mayMarkApplied(s,id,{confirm:true,source:'user'});
  assert.equal(jobStage(s.events,id),'marked submitted');
  s=markOutcome(s,id,'interview');assert.equal(jobStage(s.events,id),'interview');
  assert.equal(s.events.at(-1).kind,'outcome');

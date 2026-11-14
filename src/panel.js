@@ -1,7 +1,11 @@
-import {morningBrief,scoreJob,activity} from './scoring.js';
-import {stardust,jobStage,cleanText} from './model.js';
+import {morningBrief,scoreJob,activity,freshJobs,coverage,BRIEF_CAPS} from './scoring.js';
+import {stardust,jobStage,cleanText,listingStatus} from './model.js';
+import {describeAge,recencyOf,UNVERIFIED_LABEL} from './freshness.js';
 import {parseBoardUrl,PROVIDERS} from './discovery.js';
-let state=null,tab='orbit',search='',jobFilter='all',subview=null,review=null;
+import {POINTS} from './scoring.js';
+const POINTS_FOR=t=>POINTS[t]??0;
+let state=null,tab='orbit',search='',jobFilter='fresh',subview=null,review=null;
+let freshFilters={window:'all',grad:false,visa:false,location:false,unapplied:false};
 const view=document.querySelector('#view'),toast=document.querySelector('#toast');
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const date=x=>x?new Date(x).toLocaleDateString(undefined,{month:'short',day:'numeric'}):'Not recorded';
@@ -14,32 +18,144 @@ async function refresh(){state=await request('GET');render()}
 const sec=(title,count)=>'<div class="section-heading"><h2>'+esc(title)+'</h2><small>'+esc(count)+'</small></div>';
 const personCard=(p,why)=>'<article class="card contact-card"><div class="avatar">'+esc(p.name?.slice(0,1).toUpperCase()||'?')+'</div><div class="card-body"><p class="card-title">'+esc(p.name)+'</p><div class="micro muted">'+esc(p.currentEmployer||p.company||'Employer unconfirmed')+'</div>'+(p.sharedContext?'<p class="why">'+esc(p.sharedContext)+'</p>':'')+
  (why?badge(why,'good'):'')+'<div class="action-row">'+button('Coffee chat draft','draft',p.id)+button('Mark sent','sent',p.id,'ghost')+'</div></div></article>';
-function jobCard(job,score){
+const WINDOWS=[['all','All'],['hour','Last hour'],['sixHours','Last 6h'],['day','Last 24h']];
+const BAND_TITLES={hour:'Posted in the last hour',sixHours:'Posted in the last 6 hours',day:'Posted in the last 24 hours',
+ older:'Older than 24 hours — not newly posted',unverified:UNVERIFIED_LABEL};
+
+// One job, led by the two things this surface exists to say: how old the posting
+// provably is, and what the score is made of. An earlier version put a 54px
+// score box first and hid every term behind a disclosure, so a held job and a
+// scored one looked the same and the engine's output never reached the eye.
+const TERM_LABEL={role:'role',eligibility:'eligible',authorization:'visa',connection:'person',freshness:'fresh',portfolio:'portfolio',location:'location'};
+function freshCard(row,opts={}){
+ const {job,score,recency,age,contacts,applied}=row;
+ // An edit date never reads as confidently new, whatever band it lands in —
+ // the whole point of keeping the four kinds apart is that it is weaker evidence.
  const stage=jobStage(state.events,job.id);
- const tag=job.listingState==='closed'?badge('Closed','bad'):job.listingState==='live'?badge('Live board','good'):badge('Listing unknown','warn');
- return '<article class="card"><div class="row"><div class="card-body"><p class="card-title">'+esc(job.title)+'</p><div class="micro muted">'+esc(job.company)+' · '+esc(job.location||'Location not verified')+'</div></div><div class="score">'+score.total+'<small>/ 100</small></div></div>'+
- '<div class="tags">'+tag+badge(stage,stage==='rejected'?'bad':stage==='interview'?'good':'')+(job.sheetStatus?badge('Sheet: '+job.sheetStatus,'warn'):'')+badge(score.tier+' connection')+(job.authorization==='not-sponsored'?badge('No sponsorship','bad'):job.authorization!=='confirmed'?badge('Sponsorship unverified','warn'):'')+'</div>'+
- '<p class="why">'+esc(score.reason)+(score.contact?' · Person: '+esc(score.contact.name):'')+'</p>'+
- '<details class="disclosure"><summary>Why this score?</summary><ul class="line-list">'+score.lines.map(l=>'<li>'+esc(l)+'</li>').join('')+'</ul><small class="muted">Score is not a hiring probability. No eligibility inferred from silence.</small></details>'+
- '<div class="action-row">'+(job.applyUrl?button('View job ↗','open-job',job.id):'')+button('Verify role','verify-job',job.id)+button('Review form','preview-fill',job.id)+button('Mark I applied','submit',job.id)+button('Update outcome','outcome',job.id,'ghost')+'</div></article>';
+ // PRD §8.8 (2026-11-09): the badge prints WHEN the board last confirmed the
+ // listing, because `live` is now an observation with an instant rather than a
+ // state someone wrote. A confirmation older than two polls reads as unknown,
+ // derived here rather than stamped on the record.
+ const listing=listingStatus(job);
+ const extra=opts.listing?'<div class="tags">'+
+   (listing.state==='closed'?badge('Closed '+date(listing.seenAt),'bad')
+    :listing.state==='live'?badge('Listed, checked '+date(listing.seenAt),'good')
+    :badge(listing.seenAt?'Listing unconfirmed since '+date(listing.seenAt):'Listing unconfirmed','warn'))+
+   badge(stage,stage==='rejected'?'bad':stage==='interview'?'good':'')+
+   (job.sheetStatus?badge('Sheet: '+job.sheetStatus,'warn'):'')+'</div>':'';
+ const dotClass=recency.band==='unverified'?'unknown'
+  :recency.basis==='modified'?'edited'
+   :recency.band==='older'?'old':'new';
+ const ageLine='<p class="age '+dotClass+'">'+esc(recency.band==='unverified'?UNVERIFIED_LABEL:age)+'</p>';
+
+ // Held: no score exists, so show the missing checks and the action, never an
+ // empty box. A missing check is not a low score and must not look like one.
+ if(score.gate!=='ranked'){
+  const excluded=score.gate==='excluded';
+  return '<article class="card'+(excluded?' dim':'')+'"><p class="card-title">'+esc(job.title)+'</p>'+
+   '<div class="micro muted">'+esc(job.company)+' · '+esc(job.location||'Location not verified')+'</div>'+
+   ageLine+extra+
+   '<p class="gate-note '+(excluded?'bad':'')+'">'+esc(excluded?score.reason:'Needs '+score.missingChecks.length+' check'+(score.missingChecks.length===1?'':'s')+' before it can be ranked: '+score.missingChecks.join(' and '))+'</p>'+
+   (score.contact?'<p class="person">★ '+esc(score.contact.name)+' — '+esc(score.tier)+', worth '+POINTS_FOR(score.tier)+' once this is verified</p>'
+     :contacts?'<p class="person">'+contacts+' contact'+(contacts===1?'':'s')+' at this company</p>':'')+
+   '<div class="action-row">'+(excluded?'':button('Verify now','verify-job',job.id))+
+    (job.applyUrl?button('Open posting ↗','open-job',job.id,'ghost'):'')+'</div></article>';
+ }
+
+ const top=score.terms.filter(t=>t.points>0).sort((a,b)=>b.points-a.points);
+ const breakdown=top.map(t=>'<span class="term"><b>'+t.points+'</b> '+esc(TERM_LABEL[t.key])+'</span>').join('');
+ const missed=score.terms.filter(t=>t.points===0).map(t=>TERM_LABEL[t.key]);
+ return '<article class="card"><div class="head"><div class="card-body"><p class="card-title">'+esc(job.title)+'</p>'+
+  '<div class="micro muted">'+esc(job.company)+' · '+esc(job.location||'Location not verified')+'</div></div>'+
+  '<div class="score-inline'+(score.promoted?' hot':'')+'">'+score.total+'</div></div>'+
+  ageLine+extra+
+  (score.contact?'<p class="person">★ '+esc(score.contact.name)+' — '+esc(score.tier)+'</p>':'')+
+  (score.portfolioProject?'<p class="person folio">◆ '+esc(score.portfolioProject)+'</p>':'')+
+  '<div class="breakdown">'+breakdown+(missed.length?'<span class="term zero">0 '+esc(missed.join(', '))+'</span>':'')+'</div>'+
+  '<details class="disclosure"><summary>Evidence</summary><ul class="line-list">'+
+   '<li>Age read from: '+esc(recency.basis==='none'?'nothing — only Hoshi’s own first sighting, which is not a posting date':recency.basis)+'</li>'+
+   '<li>Originally posted: '+esc(job.timestamps?.publishedAt||'not published by this source')+'</li>'+
+   '<li>Last edited: '+esc(job.timestamps?.modifiedAt||'not published by this source')+'</li>'+
+   (job.timestamps?.repostedAt?'<li>Reposted after a verified delisting: '+esc(job.timestamps.repostedAt)+'</li>':'')+
+   score.lines.map(l=>'<li>'+esc(l)+'</li>').join('')+
+   '<li>Scored out of 100 on a '+score.scale.min+'–100 range: both gates are carried by every ranked job.</li></ul>'+
+   '<small class="muted">Not a hiring probability.</small></details>'+
+  '<div class="action-row">'+(job.applyUrl?button('Open posting ↗','open-job',job.id,''):'')+
+   button(applied?'Applied ✓':'Mark I applied','submit',job.id,'ghost')+
+   (opts.listing?button('Review form','preview-fill',job.id,'ghost')+button('Outcome','outcome',job.id,'ghost'):'')+
+   '</div></article>';
 }
+
+function freshView(){
+ const {bands,open,held,excluded,imported}=freshJobs(state);
+ const cov=coverage(state);
+ const keep=row=>(!freshFilters.grad||row.job.eligibility==='eligible')
+  &&(!freshFilters.visa||row.job.authorization==='confirmed')
+  &&(!freshFilters.location||state.profile.locations.some(l=>String(row.job.location||'').toLowerCase().includes(l.toLowerCase().trim())))
+  &&(!freshFilters.unapplied||!row.applied);
+ const order=freshFilters.window==='all'?['hour','sixHours','day','older','unverified']
+  :freshFilters.window==='hour'?['hour']
+   :freshFilters.window==='sixHours'?['hour','sixHours']:['hour','sixHours','day'];
+ const shown=order.map(b=>[b,bands[b].filter(keep)]).filter(([,rows])=>rows.length);
+ const toggle=(key,label)=>'<button class="'+(freshFilters[key]?'active':'')+'" data-fresh-toggle="'+key+'">'+label+'</button>';
+ const checked=cov.lastCompleteAt?new Date(cov.lastCompleteAt).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'never';
+ // The status used to be a five-line card above everything. It is a caveat, not
+ // the content, so it is one line that opens if she wants the detail.
+ const status='<details class="status"><summary>Checked '+esc(checked)+' · '+cov.verified+'/'+cov.boards+' boards · polled daily, not live</summary>'+
+  '<p class="micro muted">Sources: '+esc(cov.sources.join(', '))+'. Not covered: '+esc(cov.notCovered.join(', '))+'.'+
+  (cov.staleBoards.length?' No complete response in 48h: '+esc(cov.staleBoards.join(', '))+'.':'')+'</p></details>';
+ const counts=[held?held+' held for a check':'',excluded?excluded+' excluded':''].filter(Boolean).join(' · ');
+ return '<div class="eyebrow">Fresh jobs</div>'+status+
+  '<div class="pill-tabs">'+WINDOWS.map(([key,label])=>'<button class="'+(freshFilters.window===key?'active':'')+'" data-fresh-window="'+key+'">'+label+'</button>').join('')+'</div>'+
+  '<div class="pill-tabs wrap">'+toggle('grad','2027 grad')+toggle('visa','Visa')+toggle('location','My cities')+toggle('unapplied','Unapplied')+'</div>'+
+  (counts?'<p class="micro muted counts">'+esc(counts)+' — a missing check is not a low score.</p>':'')+
+  (shown.length?shown.map(([band,rows])=>sec(BAND_TITLES[band],String(rows.length))+'<div class="stack">'+rows.map(freshCard).join('')+'</div>').join('')
+   :empty('🕐','Nothing in this window',open?'All '+open+' open jobs fall outside these filters. Widen the window or clear a toggle.':'0 open jobs. Watch a company board under Jobs, or capture a posting you are already looking at.'))+
+  (imported?'<p class="micro muted counts">'+imported+' imported row'+(imported===1?'':'s')+' from your spreadsheet are under <b>All</b> — they carry no posting date Hoshi can verify, so they are not ranked for freshness here.</p>':'');
+}
+
+// Orbit and the All/Open/Promoted filters render the SAME card as Fresh. They
+// used to have their own, with the empty score slab and six chips, so the two
+// halves of the product disagreed about what a job looks like.
+function rowFor(job,score){
+ const now=new Date();
+ return {job,score:score||scoreJob(job,state.profile,state.people,state.events,now),
+  recency:recencyOf(job,now),age:describeAge(job,now),
+  contacts:state.people.filter(p=>String(p.currentEmployer||p.company||'').toLowerCase()===String(job.company||'').toLowerCase()).length,
+  applied:state.events.some(e=>e.kind==='submission'&&e.jobId===job.id)};
+}
+function jobCard(job,score){return freshCard(rowFor(job,score),{listing:true});}
 function orbit(){
  const brief=morningBrief(state);const s=stardust(state.events);
  return '<div class="hero"><div class="eyebrow">Your daily orbit</div><h1>Good things start with a conversation.</h1><p>Find the person. Find the role. Make the introduction count.</p><span class="stardust">✦ '+s+' stardust today</span></div>'+
  '<div class="action-row">'+button('＋ Capture current job','capture','','')+button('Add a person','show-add-person','','ghost')+'</div>'+
- sec("Today's conversations",brief.conversations.length+' / 3')+
+ // PRD §7.3 invariant (21): "3 / 3" is how full the cap is, which reads as
+ // completeness exactly on the mornings most was hidden. The cap's overflow is
+ // a number, and an expiring reason is named, because a row dropped here exists
+ // on no other surface — §7.4 refuses the see-all escape the category uses.
+ sec("Today's conversations",brief.conversationsNotShown
+  ?brief.conversations.length+' shown · '+brief.conversationsNotShown+' not shown'
+  :brief.conversations.length+' of '+BRIEF_CAPS.conversations)+
  (brief.conversations.length?'<div class="stack">'+brief.conversations.map(x=>personCard(x.contact,x.why)).join('')+'</div>':empty('💬','No conversations due yet',state.people.length===0?'0 people saved. Add a contact from CareerLink to begin.':'0 replies waiting or follow-ups due. Open People to start a conversation.'))+
- sec('Jobs worth your morning',brief.promoted.length+' / 5')+
+ (brief.conversationsNotShown?'<p class="micro muted" style="margin:6px 0 0">'+brief.conversationsNotShown+' more due today and not shown here'+(brief.conversationsExpiring?' — '+brief.conversationsExpiring+' of them a connection claim that expires today (§9.2). Open People.':'. Open People.')+'</p>':'')+
+ sec('Jobs worth your morning',brief.promoted.length+' of '+BRIEF_CAPS.promoted)+
  (brief.promoted.length?'<div class="stack">'+brief.promoted.map(x=>jobCard(x.job,x.score)).join('')+'</div>':empty('✦','No promoted jobs yet','0 jobs meet the role-fit floor and promotion gate. Add a role or watch a company board.'))+
- '<div class="card" style="margin-top:11px"><div class="card-title">'+brief.alsoOpen+' also open</div><p class="micro muted" style="margin:4px 0 0">Other saved jobs are available under Jobs; none is promoted without evidence.</p></div>';
+ '<div class="card" style="margin-top:11px"><div class="card-title">'+brief.alsoOpen+' also open</div><p class="micro muted" style="margin:4px 0 0">Other saved jobs are available under Jobs; none is promoted without evidence.'+
+ // PRD §9.6: an unmatched title is "no saved lane found", not "not your role",
+ // and this line is the only place that exclusion is visible.
+ (brief.unmatchedTitles?' '+brief.unmatchedTitles+' of them carry no saved lane in the title, so they were never scored — check your role lanes if that looks wrong.':'')+'</p></div>';
 }
 function addJobForm(){return '<form class="form-card" id="job-form"><h3>Save a job manually</h3><p class="micro muted">No auto-applications. Paste details you can verify.</p><label for="job-title">Job title</label><input id="job-title" name="title" required maxlength="140"><label for="job-company">Company</label><input id="job-company" name="company" required maxlength="120"><label for="job-url">Application URL</label><input id="job-url" name="applyUrl" type="url"><label for="job-location">Location</label><input id="job-location" name="location"><div class="row"><div><label for="job-eligible">Eligibility</label><select name="eligibility" id="job-eligible"><option value="unverified">Unverified</option><option value="eligible">Verified eligible</option><option value="ineligible">Not eligible</option></select></div><div><label for="job-auth">Sponsorship</label><select name="authorization" id="job-auth"><option value="unverified">Unverified</option><option value="confirmed">Confirmed</option><option value="not-sponsored">Not sponsored</option></select></div></div><button class="btn full" type="submit">Save job</button></form>'}
 function addBoardForm(){return '<form class="form-card" id="board-form"><h3>Watch a company board</h3><p class="micro muted">Paste an actual Greenhouse, Lever, or Ashby URL. Hoshi never guesses board handles.</p><label for="board-url">Board URL</label><input type="url" name="boardUrl" id="board-url" placeholder="https://jobs.lever.co/company" required><label for="board-company">Company name</label><input name="company" id="board-company" required placeholder="Company as you know it"><button class="btn full" type="submit">Ask permission & watch</button></form>'}
 function jobs(){
+ // Fresh Jobs is a section of this destination, not a fifth nav item: the
+ // four-destination bottom nav is fixed by the PRD.
+ const pills='<div class="pill-tabs">'+['fresh','all','open','promoted'].map(x=>'<button class="'+(jobFilter===x?'active':'')+'" data-filter="'+x+'">'+(x==='fresh'?'✦ Fresh':x[0].toUpperCase()+x.slice(1))+'</button>').join('')+'</div>';
+ if(jobFilter==='fresh')return pills+freshView();
  const all=state.jobs.map(job=>({job,score:scoreJob(job,state.profile,state.people,state.events)}));
  const shown=jobFilter==='promoted'?all.filter(x=>x.score.promoted):jobFilter==='open'?all.filter(x=>x.job.listingState!=='closed'):all;
  return '<div class="eyebrow">Your opportunity shelf</div><h1>Jobs, with reasons.</h1><p class="section-intro">A role has to fit before a connection can lift it. Your action stays yours.</p>'+
- '<div class="pill-tabs">'+['all','open','promoted'].map(x=>'<button class="'+(jobFilter===x?'active':'')+'" data-filter="'+x+'">'+x[0].toUpperCase()+x.slice(1)+'</button>').join('')+'</div>'+
+ pills+
  (shown.length?'<div class="stack">'+shown.map(x=>jobCard(x.job,x.score)).join('')+'</div>':empty('🔎','Nothing in this filter','Try a different filter or add a job you found.'))+
  '<div class="section-heading"><h2>Add to your shelf</h2></div>'+addJobForm()+addBoardForm()+
  (state.boards.length?sec('Watched boards',state.boards.length)+'<div class="stack">'+state.boards.map(b=>'<div class="card"><div class="card-title">'+esc(b.company)+'</div><div class="micro muted">'+esc(b.provider+' / '+b.handle)+'</div><div class="tags">'+badge(b.lastError?'Partial / error':b.lastCompleteAt?'Last complete '+date(b.lastCompleteAt):'Not checked',b.lastError?'warn':'good')+'</div>'+button('Refresh board','poll',b.id)+'</div>').join('')+'</div>':'');
@@ -58,9 +174,12 @@ function activityView(){
  return '<div class="eyebrow">Momentum, not vanity</div><h1>What actually happened.</h1><p class="section-intro">These are the events you marked in Hoshi, not a claim about every application or conversation you have ever had.</p>'+
  '<div class="stats">'+[['Conversations started',a.counts.outreach],['Replies you recorded',a.counts.replies],['Marked submitted',a.counts.submissions],['Interviews recorded',a.counts.interviews]].map(([name,num])=>'<div class="stat"><strong>'+num+'</strong><small>'+name+'</small></div>').join('')+'</div>'+
  '<div class="card" style="margin-top:10px"><strong>'+state.jobs.filter(j=>j.origin==='google-sheets-csv'&&['Applied','Rejected','Interview','Assessment','Offer'].includes(j.sheetStatus)).length+' applications imported from CSV</strong><p class="micro muted">External snapshot only. These are not counted as Hoshi-observed submissions or used in rates.</p></div>'+
- sec('Rates are estimates','95% Wilson interval')+
- a.rates.map(r=>'<div class="rate"><strong>'+esc(r.summary)+'</strong><small>'+esc(r.label)+'. Based only on events you recorded.</small></div>').join('')+
- '<div class="card" style="margin-top:10px"><strong>'+a.immature+' applications too recent</strong><p class="micro muted">Submissions younger than 21 days stay out of response-rate denominators. Missing replies and unconfirmed external submissions are not observed.</p></div>'+
+ sec('Rates are estimates','95% Wilson interval, never pooled across two regimes')+
+ a.rates.map(r=>'<div class="card"><strong>'+esc(r.metric)+'</strong>'+
+  r.segments.map(s=>'<div class="rate"><strong>'+esc(s.summary)+'</strong><small>'+esc(s.label)+'. '+esc(s.skew)+'</small></div>').join('')+
+  (r.attribution?'<p class="micro muted"><strong>A difference, not an effect.</strong> '+esc(r.attribution)+'</p>':'')+
+  '<p class="micro muted">'+esc(r.note)+'</p></div>').join('')+
+ '<div class="card" style="margin-top:10px"><strong>'+(a.immature.hoshi+a.immature.user)+' applications too recent</strong><p class="micro muted">'+a.immature.hoshi+' of Hoshi\'s rows and '+a.immature.user+' of yours are younger than 21 days and stay out of the response-rate denominators. Missing replies and unconfirmed external submissions are not observed.'+(a.weightTables.length>1?' Hoshi\'s rows span '+a.weightTables.length+' weight tables and are not segmented by table.':'')+'</p></div>'+
  sec('Your record','Append-only history')+
  (state.events.length?'<div class="stack">'+state.events.slice(-20).reverse().map(e=>'<div class="card"><strong>'+esc(e.kind)+'</strong><div class="micro muted">'+date(e.at)+' · '+esc(e.stage||e.step||'Recorded by you')+'</div></div>').join('')+'</div>':empty('◉','No recorded events','Mark a message sent, or mark an application after you submit it yourself.'));
 }
@@ -69,7 +188,7 @@ function settings(){
  '<form id="settings-form" class="form-card"><label for="grad">Graduation year</label><input name="graduationYear" id="grad" value="'+esc(state.profile.graduationYear)+'"><label for="lanes">Role lanes (comma-separated)</label><textarea id="lanes" name="roleLanes">'+esc(state.profile.roleLanes.join(', '))+'</textarea><label for="places">Locations (comma-separated)</label><textarea id="places" name="locations">'+esc(state.profile.locations.join(', '))+'</textarea><label for="priority">Priority threshold (0–100; PRD B-15 still open)</label><input id="priority" name="priorityThreshold" type="number" min="0" max="100" value="'+esc(state.profile.priorityThreshold)+'"><button class="btn full" type="submit">Save preferences</button></form>'+
  '<div class="form-card"><h3>Bring in your Google Sheet</h3><p class="micro muted">Working option: in Google Sheets choose File → Download → CSV on the Applications or Contacts tab. Import the file here. Data remains in local Chrome storage. Automatic OAuth sync is still awaiting extension authorization configuration; it is not currently connected.</p><label for="import-kind">CSV source</label><select id="import-kind"><option value="contacts">My Contacts</option><option value="applications">Daily Applications</option></select><label for="import-file">CSV file</label><input id="import-file" type="file" accept=".csv,text/csv"><div class="action-row">'+button('Import CSV','import-csv')+'</div></div>'+
  '<div class="form-card"><h3>Your data stays yours</h3><p class="micro muted">No server. No automatic submissions. No LinkedIn scraping. Dates and sources remain visible. Export your local records whenever you like.</p>'+button('Export backup JSON','export')+'</div>'+
- '<div class="form-card"><h3>Saved answer bank</h3><p class="micro muted">Only answers you write are stored. Protected demographic questions are never saved.</p><form id="answer-form"><label>Exact question</label><input name="question" required><label>Your answer</label><textarea name="answer" required></textarea><label>Scope</label><select name="scope"><option value="employer-independent">Employer-independent</option><option value="employer-specific">Employer-specific</option></select><label>Company (if specific)</label><input name="company"><button class="btn full" type="submit">Save my answer</button></form><p class="micro muted">'+state.answers.length+' answers saved locally.</p></div>';
+ '<div class="form-card"><h3>Saved answer bank</h3><p class="micro muted">Only answers you write are stored. Protected demographic questions are never saved.</p><form id="answer-form"><label>Exact question</label><input name="question" required><label>Your answer</label><textarea name="answer" required></textarea><label>Scope</label><select name="scope"><option value="employer-independent">Employer-independent</option><option value="employer-specific">Employer-specific</option></select><label>Company (if specific)</label><input name="company"><button class="btn full" type="submit">Save my answer</button></form><p class="micro muted">'+state.answers.length+' answers saved locally.'+(state.answersWithdrawn?' '+state.answersWithdrawn+' withdrawn as demographic questions — the wording is not kept.':'')+'</p></div>';
 }
 function reviewView(){
  const items=review?.proposals||[];
@@ -87,7 +206,9 @@ document.querySelector('.bottom-nav').addEventListener('click',e=>{const btn=e.t
 document.querySelector('#settings-trigger').addEventListener('click',()=>{subview=subview==='settings'?null:'settings';render();scrollTo(0,0)});
 view.addEventListener('input',e=>{if(e.target.id==='person-search'){search=e.target.value; /* re-render after debounce to preserve focus */clearTimeout(view.q);view.q=setTimeout(()=>{const cursor=document.activeElement?.selectionStart;render();const el=document.querySelector('#person-search');el?.focus();if(cursor!=null)el?.setSelectionRange(cursor,cursor)},130)}});
 view.addEventListener('click',async e=>{
- const f=e.target.closest('[data-filter]');if(f){jobFilter=f.dataset.filter;render();return;}
+ const f=e.target.closest('[data-filter]');if(f){jobFilter=f.dataset.filter;render();scrollTo(0,0);return;}
+ const w=e.target.closest('[data-fresh-window]');if(w){freshFilters.window=w.dataset.freshWindow;render();return;}
+ const t=e.target.closest('[data-fresh-toggle]');if(t){const key=t.dataset.freshToggle;freshFilters[key]=!freshFilters[key];render();return;}
  const b=e.target.closest('[data-action]');if(!b)return;
  const action=b.dataset.action,id=b.dataset.id;
  try{

@@ -5,8 +5,11 @@ test('safe profile has no protected fields even when supplied',()=>{
  assert.deepEqual(Object.keys(p).sort(),['priorityThreshold','roleLanes']);assert.equal(p.priorityThreshold,100);
 });
 test('job dedupe uses canonical URLs; a page observation is not overwritten by discovery',()=>{
- let s=stateFrom(),j={title:'Product Designer',company:'Example',location:'US',applyUrl:'https://jobs.lever.co/ex/123?utm=foo',origin:'page',descriptionText:'A'};
- s=addJob(s,j);s=addJob(s,{...j,applyUrl:'https://jobs.lever.co/ex/123',origin:'discovery',descriptionText:'B'});
+ // Invariant (22): a stored description carries the length it was cut from, so
+ // these fixtures now construct an honest record rather than a bare string.
+ let s=stateFrom(),j={title:'Product Designer',company:'Example',location:'US',applyUrl:'https://jobs.lever.co/ex/123?utm=foo',origin:'page',descriptionText:'A',descriptionSourceChars:1};
+ s=addJob(s,j);s=addJob(s,{...j,applyUrl:'https://jobs.lever.co/ex/123',origin:'discovery',descriptionText:'B',descriptionSourceChars:1});
+ // Equal length is a tie, and a tie keeps the record already stored.
  assert.equal(s.jobs.length,1);assert.equal(s.jobs[0].descriptionText,'A');
 });
 test('no submission without a human confirmation',()=>{

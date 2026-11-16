@@ -37,6 +37,32 @@ export function bankWithdrawals(answers=[]){
 }
 export const asId=()=>globalThis.crypto?.randomUUID?.() || String(Date.now())+'-'+Math.random().toString(36).slice(2);
 export const cleanText=(value,max=500)=>String(value??'').trim().slice(0,max);
+// PRD §8.4 / invariant (22), added 2026-11-16. ONE cap for the description,
+// because §8.4 promises one shape from two producers and a bound each producer
+// applies for itself is two bounds: the page path cut at 1400 and the adapter
+// path at 1800, so the same requisition stored a different amount of text
+// depending on how she met it. `[assumption]` the 1800 — it is a trade against
+// B-17's 10MB quota, not a measurement: at this cap a job record is ~2.9KB and
+// the quota fills at ~3,600 jobs; at 4000 chars ~2,050; at full HTML ~495.
+export const DESCRIPTION_CAP=1800;
+// The length BEFORE the cut rides the record, so truncation is DERIVED and
+// never stamped (invariant 13's shape). A cap on a LIST can print "2 more not
+// shown"; a cap on a STRING has no overflow surface, so a sibling field is the
+// only way the cut is countable at all.
+export function boundDescription(raw,cap){
+ if(!Number.isFinite(cap)||cap<=0)throw Error('A stored description needs the one cap passed in, never a local literal');
+ const text=String(raw??'').replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();
+ return {descriptionText:text.slice(0,cap),descriptionSourceChars:text?text.length:null};
+}
+// Three states and never two. `partial` covers both "cut" and "stored before
+// this rule existed, so completeness is unknown" — a truncation can only ever
+// produce a FALSE NEGATIVE, so both cases forbid the same thing: reporting
+// absence over this text as a finding.
+export function descriptionCoverage(job,cap=DESCRIPTION_CAP){
+ if(!job?.descriptionText)return 'none';
+ if(!Number.isFinite(job.descriptionSourceChars))return 'partial';
+ return job.descriptionSourceChars>cap?'partial':'full';
+}
 export function stateFrom(input){
  const state=Object.fromEntries(Object.entries(DEFAULTS).map(([k,v])=>[k,input?.[k]===undefined?structuredClone(v):input[k]]));
  // Migrations. Without these the new engine runs against old records and
@@ -96,14 +122,31 @@ export function mergeJob(existing,next){
  const observed=x=>x?.listingSeenAt||x?.closedAt;
  const held=observed(existing)&&!observed(next)
   ?{listingState:existing.listingState,listingSeenAt:existing.listingSeenAt??null,closedAt:existing.closedAt??null,closedReason:existing.closedReason??null}:{};
+ // PRD §8.5 (2026-11-16): the page record wins on populated fields BECAUSE it is
+ // the higher-fidelity one — true of a selector against a guess, and false for
+ // exactly one field. "Higher fidelity" is a claim about a record, and fidelity
+ // is a property of a field: the page path's description is JSON-LD prose, often
+ // a short summary or absent, while the adapter's is the provider's own field.
+ // So this field resolves on which copy is less cut, whichever path it came from,
+ // and its source length and provenance travel with the text that won.
+ const better=bestDescription(existing,next);
  if(existing.origin==='page'&&next.origin==='discovery'){
   // PRD §8.5: the page record wins on populated fields; discovery only fills blanks.
   const patched={...existing};
   for(const [key,val] of Object.entries(next))if((patched[key]==null||patched[key]==='')&&val!=null)patched[key]=val;
-  return {...patched,...listing,timestamps};
+  return {...patched,...listing,...better(patched),timestamps};
  }
- const result={...existing,...next,...held,...listing,timestamps};
+ const result={...existing,...next,...held,...listing,...better(existing),timestamps};
  result.id=existing.id;result.createdAt=existing.createdAt;return result;
+}
+function bestDescription(existing,next){
+ const len=x=>String(x?.descriptionText||'').length;
+ // A tie keeps the record already stored: equal text is not a reason to churn,
+ // and nothing is gained by preferring either producer at the same length.
+ const win=len(next)>len(existing)?next:existing;
+ return base=>!len(win)?{}:{descriptionText:win.descriptionText,
+  descriptionSourceChars:win.descriptionSourceChars??null,
+  provenance:{...(base?.provenance||{}),descriptionText:win.provenance?.descriptionText||'unavailable'}};
 }
 
 // PRD §9.1 invariant (12), added 2026-11-03. Eligibility and sponsorship are
@@ -146,6 +189,11 @@ export function listingStatus(job,now=new Date()){
 }
 export function addJob(state,job){
  if(!job.title||!job.company)throw Error('A job needs a real title and company.');
+ // Invariant (22): a stored description carries the length it was cut from, or
+ // the write is refused rather than kept as text of unknown completeness
+ // (Principle 5 — fail closed means writing nothing, not writing a guess).
+ if(job.descriptionText&&job.descriptionSourceChars===undefined)
+  throw Error('A stored description must carry descriptionSourceChars (PRD §8.4 invariant 22)');
  const identity=jobIdentity(job);
  const at=state.jobs.findIndex(j=>j.identity===identity || (j.provider&&j.provider===job.provider&&j.providerJobId&&j.providerJobId===job.providerJobId));
  const claimed=job.listingState||'unknown';

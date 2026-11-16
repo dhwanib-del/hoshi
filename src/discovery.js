@@ -1,5 +1,5 @@
 // Watch company boards, never keyword-crawl the market or scrape LinkedIn.
-import {addJob,cleanText} from './model.js';
+import {addJob,cleanText,boundDescription,DESCRIPTION_CAP} from './model.js';
 export const PROVIDERS={
  greenhouse:{host:'https://boards-api.greenhouse.io/*',coverage:'documented'},
  lever:{host:'https://api.lever.co/*',coverage:'documented'},
@@ -29,8 +29,11 @@ export function normalizedJob(raw,board,fields){
   provider:board.provider,providerJobId:String(fields.providerJobId),
   employmentType:fields.employmentType||null,workplaceType:fields.workplaceType||null,
   timestamps:{publishedAt:iso(fields.publishedAt),modifiedAt:iso(fields.modifiedAt),discoveredAt:new Date().toISOString(),repostedAt:null},
-  // Do not store full description HTML; job stores otherwise exhaust 10MB quickly.
-  descriptionText:cleanText(fields.descriptionText?.replace(/<[^>]*>/g,' ').replace(/\s+/g,' '),1800),
+  // Do not store full description HTML; job stores otherwise exhaust 10MB quickly
+  // (B-17: at full HTML the quota fills at ~495 jobs). The bound is §8.4's single
+  // DESCRIPTION_CAP and the pre-cut length rides the record, so a term scoring 0
+  // over this text can say whether it saw all of it (invariant 22).
+  ...boundDescription(fields.descriptionText,DESCRIPTION_CAP),
   // No listingState here. PRD §8.8 (2026-11-09): `live` is an observation, not
   // a thing a producer writes when it mints a row — applyBoardResult sets it
   // from the response that contained the job, with the instant it saw it.
@@ -61,6 +64,10 @@ export async function listJobs(board,fetchImpl=fetch){
     // posting date (PRD §9.5). first_published is the real one where present.
     publishedAt:it.first_published||null,modifiedAt:it.updated_at||null,
     provenance:{title:{source:'discovery',adapter:'greenhouse',path:'jobs[].title'},
+     // §8.4: provenance for every field, and the description is a field. It had
+     // none on either path, which is how the one term that reads it could not
+     // name where its text came from or whether it was whole (invariant 22).
+     descriptionText:{source:'discovery',adapter:'greenhouse',path:'jobs[].content'},
      publishedAt:{source:'discovery',adapter:'greenhouse',path:'jobs[].first_published'},
      modifiedAt:{source:'discovery',adapter:'greenhouse',path:'jobs[].updated_at'}}
    }:board.provider==='lever'?{
@@ -74,6 +81,10 @@ export async function listJobs(board,fetchImpl=fetch){
     publishedAt:Number.isFinite(it.createdAt)?new Date(it.createdAt).toISOString():null,
     provenance:{title:{source:'discovery',adapter:'lever',path:'postings[].text'},
      applyUrl:{source:'discovery',adapter:'lever',path:'postings[].hostedUrl'},
+     // Lever ships the description in several variants, so provenance names the
+     // one that actually supplied the value rather than the pair that might have.
+     descriptionText:{source:'discovery',adapter:'lever',
+      path:'postings[].'+(it.descriptionPlain?'descriptionPlain':'description')},
      publishedAt:{source:'discovery',adapter:'lever',path:'postings[].createdAt'}}
    }:{
     title:it.title,applyUrl:it.jobUrl||it.applyUrl,providerJobId:it.id,location:it.location,
@@ -81,6 +92,7 @@ export async function listJobs(board,fetchImpl=fetch){
     descriptionText:it.descriptionHtml,
     publishedAt:it.publishedAt||null,modifiedAt:it.updatedAt||null,
     provenance:{title:{source:'discovery',adapter:'ashby',path:'jobs[].title'},
+     descriptionText:{source:'discovery',adapter:'ashby',path:'jobs[].descriptionHtml'},
      publishedAt:{source:'discovery',adapter:'ashby',path:'jobs[].publishedAt'}}
    };
    jobs.push(normalizedJob(it,board,fields));

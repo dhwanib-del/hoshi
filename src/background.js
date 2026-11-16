@@ -1,4 +1,4 @@
-import {KEY,DEFAULTS,PROTECTED,stateFrom,asId,addJob,appendEvent,mayMarkApplied,markOutcome,saveAnswer,safeProfile,usableAnswer} from './model.js';
+import {KEY,DEFAULTS,PROTECTED,DESCRIPTION_CAP,stateFrom,asId,addJob,appendEvent,mayMarkApplied,markOutcome,saveAnswer,safeProfile,usableAnswer} from './model.js';
 import {listJobs,applyBoardResult} from './discovery.js';
 import {captureCurrentPage} from './capture.js';
 import {inspectFields,fillReviewed} from './autofill.js';
@@ -56,7 +56,7 @@ async function handle(message){
    const url=tab.url||'';
    if(!/^https:\/\/(job-boards\.greenhouse\.io|boards\.greenhouse\.io|jobs\.lever\.co|jobs\.ashbyhq\.com|[^/]*myworkdayjobs\.com|[^/]*smartrecruiters\.com|[^/]*icims\.com|[^/]*workable\.com|[^/]*jobvite\.com)\//.test(url))
     throw Error('Only supported ATS job pages may be captured.');
-   const rows=await chrome.scripting.executeScript({target:{tabId:tab.id},func:captureCurrentPage});
+   const rows=await chrome.scripting.executeScript({target:{tabId:tab.id},func:captureCurrentPage,args:[DESCRIPTION_CAP]});
    const job=rows[0]?.result;
    if(!job||job.error)throw Error(job?.error||'Job page could not be read. Grant site access using the Hoshi toolbar icon.');
    if(!job.company) return {needsCompany:true,captured:job};

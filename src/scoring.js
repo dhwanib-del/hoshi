@@ -1,5 +1,5 @@
 // PRD section 9: scores prioritize conversations; never predict hiring odds.
-import {jobStage,gateState} from './model.js';
+import {jobStage,gateState,descriptionCoverage} from './model.js';
 import {freshnessScore,describeAge,recencyOf,isFresh} from './freshness.js';
 // Weight table decided 2026-11-03: the 2027-agent spec's terms and priorities,
 // with a connection term kept rather than dropped to 0. Authorization rises from
@@ -99,15 +99,27 @@ export function freshness(job,now=new Date()){
  */
 export function portfolioMatch(job,profile){
  const text=lower((job.title||'')+' '+(job.descriptionText||''));
- if(!text.trim())return {points:0,project:null,why:'nothing to match against yet'};
+ const coverage=descriptionCoverage(job);
  let best=null;
  for(const project of profile?.portfolioProjects||[]){
   const hits=(project.tags||[]).filter(t=>t&&text.includes(lower(t)));
   if(hits.length&&(!best||hits.length>best.hits.length))best={project,hits};
  }
- if(!best)return {points:0,project:null,why:'no saved project matches this posting'};
- return {points:WEIGHTS.portfolio,project:best.project.name,
+ // A match is a match whatever the coverage: the cap can only ever hide a tag,
+ // never invent one, so truncation produces FALSE NEGATIVES only. Which is why
+ // the zero is where it has to be honest — §9.6's unmatched band one term over,
+ // and §8.8's rule a third time: a failure to see is not an observation of
+ // absence. So the line says which of the three it is and never asserts that no
+ // project matches a posting Hoshi only read part of.
+ if(best)return {points:WEIGHTS.portfolio,project:best.project.name,coverage,
   why:best.project.name+' — matched on '+best.hits.slice(0,3).join(', ')};
+ if(!text.trim()||coverage==='none')return {points:0,project:null,coverage,
+  why:'no description stored for this posting — nothing to match against'};
+ if(coverage==='partial')return {points:0,project:null,coverage,
+  why:'no saved project in the '+(job.descriptionText||'').length+' characters stored of '
+   +(Number.isFinite(job.descriptionSourceChars)?job.descriptionSourceChars+' — the rest was not read'
+     :'this posting — how much was cut is not recorded')};
+ return {points:0,project:null,coverage,why:'no saved project matches this posting'};
 }
 
 /**

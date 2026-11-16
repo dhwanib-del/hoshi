@@ -1,6 +1,13 @@
 // Executed ONLY on user request, ONLY for known ATS hosts with granted access.
 // No global content-script registrations; never observes other tabs or private LinkedIn.
-export function captureCurrentPage(){
+// `cap` is PRD §8.4's one description bound, PASSED IN rather than written here:
+// this function is injected with chrome.scripting.executeScript and cannot
+// import, so a local literal would be invariant (13)'s least-derived consumer —
+// which is exactly what it was: this path cut shorter than the adapter path did,
+// for the same field of the same shape, so the stored text depended on how she
+// met the job. Absent, it refuses rather than storing under a bound nobody set.
+export function captureCurrentPage(cap){
+ if(!Number.isFinite(cap)||cap<=0)return {error:'No description bound was passed; nothing was read.'};
  const host=location.hostname;
  const valid=[
   'job-boards.greenhouse.io','boards.greenhouse.io','jobs.lever.co','jobs.ashbyhq.com',
@@ -33,6 +40,9 @@ export function captureCurrentPage(){
  const idFromUrl=provider==='greenhouse'?(segments[segments.indexOf('jobs')+1]||null)
   :(provider==='lever'||provider==='ashby')?(segments[1]||null):null;
  const providerJobId=idFromUrl&&/^[A-Za-z0-9][A-Za-z0-9-]{2,63}$/.test(idFromUrl)?idFromUrl:null;
+ // One bound, and the length before the cut rides the record so a term scoring 0
+ // over this text can say whether it saw all of it (PRD invariant 22).
+ const rawDescription=String(structured?.description||'').replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();
  const posted=structured?.datePosted||null;
  const modified=structured?.dateModified||null;
  const validDate=v=>v&&Number.isFinite(Date.parse(v))?new Date(Date.parse(v)).toISOString():null;
@@ -42,10 +52,12 @@ export function captureCurrentPage(){
   // Four distinct timestamp kinds; discoveredAt is this sighting and is never
   // used as the posting's age (src/freshness.js).
   timestamps:{publishedAt:validDate(posted),modifiedAt:validDate(modified),discoveredAt:new Date().toISOString(),repostedAt:null},
-  descriptionText:String(structured?.description||'').replace(/<[^>]*>/g,' ').slice(0,1400),
+  descriptionText:rawDescription.slice(0,cap),
+  descriptionSourceChars:rawDescription?rawDescription.length:null,
   provenance:{
    title:title?.selector||'unavailable',company:org?.selector||'unavailable',location:loc?.selector||'unavailable',
    providerJobId:providerJobId?'URL path segment':'unavailable',
+   descriptionText:rawDescription?'JSON-LD JobPosting.description':'unavailable',
    publishedAt:validDate(posted)?'JSON-LD JobPosting.datePosted':'unavailable',
    modifiedAt:validDate(modified)?'JSON-LD JobPosting.dateModified':'unavailable'
   },

@@ -18,7 +18,7 @@
 // attribution, because the buckets are self-selected rather than assigned.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { activity, byTier, tierPopulation, TIERS, WEIGHTS_VERSION } from '../src/scoring.js';
+import { activity, byTier, tierPopulation, TIERS, TIER_ARMS, WEIGHTS_VERSION } from '../src/scoring.js';
 
 const day = 86400000;
 const now = new Date('2026-11-13T09:00:00Z');
@@ -46,13 +46,19 @@ test('invariant (9): a tier bucket never holds a row she entered herself', () =>
 });
 
 test('invariant (15) at the tier grain: each label names the bucket its own filter selected', () => {
+  // Iterates the ARMS and not the tiers, because invariant (23) made C1 two of
+  // them: a tier value is no longer a population. The C1 row here carries no
+  // basis, which is what a row written before today looks like — it belongs to
+  // neither C1 arm and the set states it rather than pooling it back.
   const rows = [row('a', 'C2'), row('b', 'C2'), row('c', 'C1')];
-  for (const t of TIERS) {
-    const p = tierPopulation(t);
-    assert.equal(p.label, t + ' applications Hoshi filled');
+  for (const arm of TIER_ARMS) {
+    const p = tierPopulation(arm);
+    assert.ok(p.label.startsWith(arm.split('·')[0] + ' applications Hoshi filled'));
     const seg = byTier(rows, () => false, 'skew').segments.find(s => s.label === 'Of ' + p.label);
     assert.equal(seg.n, rows.filter(p.of).length);
   }
+  assert.ok(TIERS.includes('C1'), 'C1 is still a tier value even though it is not a population');
+  assert.match(byTier(rows, () => false, 'skew').excluded, /1 C1 row carries/);
 });
 
 test('invariant (20): disjoint intervals still license no attribution', () => {

@@ -62,27 +62,49 @@ export function decayClock(contactId,events,now=new Date()){
  const days=(now-new Date(first.at))/86400000;
  return {replied,first,days,messages:messages.length,spent:days>DECAY_DAYS};
 }
+// PRD §9.2 invariant (23), added 2026-11-17 (B-28). C1 holds TWO constructions
+// and the invariants admitted only one. Invariants (5) and (10) were written for
+// the alum route — a ranked alum at the company she has not saved, which is the
+// one tier Hoshi asserts on her behalf, so it owes a resolvable record, its
+// `origin` and an `employerAsOf`. But decay has sent a C2 to C1 since 09-29, and
+// a C2 may be a hand-typed contact with no alum record at all, so that route
+// could not satisfy either invariant — and invariant (19) made it permanent.
+// Both are C1 because both are the same claim about today (a named person at the
+// company and nothing she can act on), and each names its own evidence: the alum
+// route the list and the date, the spent route the thread and the silence. So
+// the basis is DERIVED from the evidence and travels with the tier, because
+// everything downstream — the score line, the stored row, a tier-segmented rate
+// — was reading one label over two populations with opposite meanings.
+export const C1_BASES=Object.freeze(['alum','spent']);
 export function tierFor(company,people,events,now=new Date()){
  const matches=people.filter(p=>{
   if(!p.name||!p.origin)return false;
   if(p.origin==='user-imported CareerLink CSV'&&!['Verified current','Changed employer','Verified public profile'].includes(p.employerCheck))return false;
   return lower(p.currentEmployer||p.company)===lower(company);
  });
- let best={tier:'C0',contact:null,reason:'Nobody found at this company'};
+ let best={tier:'C0',basis:null,contact:null,reason:'Nobody found at this company'};
  for(const p of matches){
   const clock=decayClock(p.id,events,now);
-  let tier='C2';
+  let tier='C2',basis=null;
   if(clock.replied)tier='C3';
-  else if(clock.spent)tier='C1';
-  else if(p.rankSource==='alumni'&&!p.saved)tier='C1';
-  if(tier==='C1'&&!p.origin)continue;
-  // Invariant (19)'s display half: a spent claim prints the date that spent it
-  // rather than asserting a cooled tier (§9.2's move on an employer date).
+  else if(clock.spent){tier='C1';basis='spent';}
+  else if(p.rankSource==='alumni'&&!p.saved){
+   // Invariants (5) and (10) bind this construction and only this one: an
+   // unprovenanced or undated alum C1 is UNCONSTRUCTIBLE rather than scored
+   // low, and nothing upgrades on failure — she does not become a C2 because
+   // her record is thin.
+   if(!p.origin||!p.employerAsOf)continue;
+   tier='C1';basis='alum';
+  }
+  // Each construction names the evidence that produced it. Invariant (19)'s
+  // display half: a spent claim prints the date that spent it rather than
+  // asserting a cooled tier, and the alum claim prints the date she last
+  // confirmed the employer (§9.2's clock) rather than implying it is current.
   const why=tier==='C3'?'replied'
    :tier==='C2'?'saved contact'
-   :clock.spent?'no reply since '+shortDate(clock.first.at)+', '+clock.messages+(clock.messages===1?' send':' sends')
-   :'from your alumni list, not saved';
-  if(POINTS[tier]>POINTS[best.tier])best={tier,contact:p,reason:p.name+' · '+(p.sharedContext||p.origin)+' · '+why};
+   :basis==='spent'?'no reply since '+shortDate(clock.first.at)+', '+clock.messages+(clock.messages===1?' send':' sends')
+   :'from your alumni list, not saved · employer last confirmed '+shortDate(p.employerAsOf);
+  if(POINTS[tier]>POINTS[best.tier])best={tier,basis,contact:p,reason:p.name+' · '+(p.sharedContext||p.origin)+' · '+why};
  }
  return best;
 }
@@ -195,7 +217,9 @@ export function scoreJob(job,profile,people=[],events=[],now=new Date()){
   // §9.6: the band and the lane that produced it, so a surface can say "no lane
   // matched this title" rather than implying the role is wrong.
   roleFitBasis:role.basis,roleLane:role.lane,roleLaneTerm:role.laneTerm,roleField:role.field,
-  tier:tier.tier,contact:tier.contact,promoted,qualified,
+  // Invariant (23): C1's construction rides the score, as §9.6's band does, so
+  // the row that stores the tier and the rate that segments on it see which.
+  tier:tier.tier,tierBasis:tier.basis,contact:tier.contact,promoted,qualified,
   // The version travels with the score, not with whoever writes the row: a
   // score and the table that produced it are one fact (PRD §10.5 invariant 14).
   weightsVersion:WEIGHTS_VERSION,
@@ -379,9 +403,19 @@ export function populationRate(key,rows,hit,skew){
 // entries carry no tier (invariant 9), so they are filtered out here rather
 // than becoming a fifth untiered bucket.
 export const TIERS=Object.freeze(['C3','C2','C1','C0']);
-export function tierPopulation(t){
- return Object.freeze({of:x=>x.source==='hoshi'&&(x.personAttached?.tier||'C0')===t,
-  label:t+' applications Hoshi filled'});
+// Invariant (23) at the rate's grain: C1 is two constructions, so one C1 arm
+// would pool "a path she never used" with "a path she used and nothing came
+// back" — opposite evidence about the thesis under one label, which is rule 11's
+// own prohibition one dimension over. The arms are DERIVED from the tiers and
+// the bases, so a third construction would appear here without being listed.
+export const TIER_ARMS=Object.freeze(TIERS.flatMap(t=>t==='C1'?C1_BASES.map(b=>'C1·'+b):[t]));
+export function tierPopulation(arm){
+ const [t,basis]=String(arm).split('·');
+ if(t==='C1'&&!C1_BASES.includes(basis))throw Error('C1 is two constructions; a tier population must name which (invariant 23)');
+ return Object.freeze({of:x=>x.source==='hoshi'&&(x.personAttached?.tier||'C0')===t
+   &&(!basis||x.personAttached?.tierBasis===basis),
+  label:t+' applications Hoshi filled'+(basis==='alum'?', where the person was an alum you had not saved'
+   :basis==='spent'?', where you had messaged them and no reply came':'')});
 }
 // The by-tier response rate IS displayable, and the figure §10.4 refused it
 // with was the wrong one. 141 is the n for a 5% → 15% move; the gap §9.1's
@@ -394,11 +428,17 @@ export function tierPopulation(t){
 // Invariant (20): no comparison is computed here, and the refusal is attached
 // to the set rather than left to the copy.
 export function byTier(rows,hit,skew){
+ // A C1 row written before the basis existed cannot be put in either arm, and
+ // the store is append-only, so that is permanent: it is stated as a number
+ // (rule 6's shape) rather than pooled back into one C1 bucket.
+ const unbased=rows.filter(x=>x.source==='hoshi'&&x.personAttached?.tier==='C1'
+  &&!C1_BASES.includes(x.personAttached?.tierBasis)).length;
  return {metric:'A response, by connection tier as recorded at submit',kind:'self-selected',
   pooled:null,comparison:null,
+  excluded:unbased?unbased+(unbased===1?' C1 row carries':' C1 rows carry')+' no construction and '+(unbased===1?'is':'are')+' in neither C1 arm — written before Hoshi distinguished the two, and an append-only row cannot be reclassified.':null,
   attribution:'You chose which applications carried a person, so a gap between these tiers is a difference and never the effect of the connection. Only a cohort could separate the two (§10.4).',
-  note:'Hoshi’s rows only — your own entries carry no tier (invariant 9).',
-  segments:TIERS.map(t=>populationRate(tierPopulation(t),rows,hit,skew))};
+  note:'Hoshi’s rows only — your own entries carry no tier (invariant 9). C1 is two arms, because an alum you never wrote to and a thread that went unanswered are not the same evidence.',
+  segments:TIER_ARMS.map(a=>populationRate(tierPopulation(a),rows,hit,skew))};
 }
 // PRD §10.3 rule 11, amended 2026-11-06. Segmentation by `source` binds exactly
 // two rates — person-attached, and response over `submission` rows — and neither

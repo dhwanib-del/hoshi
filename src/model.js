@@ -225,9 +225,15 @@ export function mayMarkApplied(state,jobId,{confirm=false,source='hoshi',score=n
  // stamped with a guess — fail closed (Principle 5) on an append-only store,
  // where a row written wrong can never be taken back.
  if(!score.weightsVersion)throw Error('A Hoshi-scored submission needs the weight table that produced the score');
+ // Invariant (23), PRD §9.2: C1 is two constructions, so a C1 row without the
+ // one that produced it is permanently un-segmentable in an append-only store —
+ // the same reason invariant (14) refuses a row whose score names no weight
+ // table. Refused rather than stamped with whichever construction looks likely.
+ if(score.tier==='C1'&&!score.tierBasis)throw Error('A C1 submission needs the construction that produced the tier');
  return appendEvent(state,{kind:'submission',source:'hoshi',jobId,
   roleFit:score.roleFit,totalScore:score.total,weightsVersion:score.weightsVersion,
-  personAttached:score.tier!=='C0'&&score.contact?{contactId:score.contact.id,tier:score.tier}:null});
+  personAttached:score.tier!=='C0'&&score.contact?{contactId:score.contact.id,tier:score.tier,
+   ...(score.tier==='C1'?{tierBasis:score.tierBasis}:{})}:null});
 }
 export function markOutcome(state,jobId,stage){
  if(!['response','screen','interview','rejected'].includes(stage))throw Error('Invalid outcome');

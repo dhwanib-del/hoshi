@@ -201,8 +201,20 @@ export function addJob(state,job){
  if(at<0)return {...state,jobs:[mergeJob(null,record),...state.jobs]};
  const jobs=[...state.jobs];jobs[at]=mergeJob(jobs[at],record);return {...state,jobs};
 }
+// PRD §9.2 invariant (24), added 2026-11-18. The `outcome` kind has carried
+// `rejected` since 2026-10-16, so the APPLICATION funnel's enum could record a
+// no; the CONVERSATION funnel's could not — `reply` had `replied` and
+// `refer-offered` and nothing for the answer that refuses. So a contact who
+// wrote back "I've left, I can't refer you" was stored with the same word as a
+// referral offer, and C3 read the arrival of a message rather than the answer in
+// it. `declined` is her assertion like the other two (Principle 4 keeps Hoshi
+// out of her mail), and a step outside the union is REFUSED rather than coerced
+// to `replied`: fail closed on an append-only store means writing nothing.
+export const REPLY_STEPS=Object.freeze(['replied','refer-offered','declined']);
 export function appendEvent(state,event){
  if(!['submission','outcome','outreach','reply','brief'].includes(event.kind))throw Error('Unknown event kind');
+ if(event.kind==='reply'&&!REPLY_STEPS.includes(event.step))
+  throw Error('A reply must say what came back: '+REPLY_STEPS.join(' | ')+' (PRD §9.2 invariant 24)');
  const e=Object.freeze({id:asId(),at:new Date().toISOString(),...event});
  return {...state,events:[...state.events,e]};
 }

@@ -79,7 +79,7 @@ test('invariant 23: the construction is written with the row, or the row is refu
 });
 
 test('invariant 23: a tier-segmented rate does not pool the two constructions',()=>{
- assert.deepEqual(TIER_ARMS,['C3','C2','C1·alum','C1·spent','C0']);
+ assert.deepEqual(TIER_ARMS,['C3','C2',...C1_BASES.map(b=>'C1·'+b),'C0']);
  assert.throws(()=>tierPopulation('C1'),/must name which/,'a tier value is not a population');
  for(const b of C1_BASES)assert.ok(tierPopulation('C1·'+b).label.includes('C1 applications Hoshi filled, where'));
  const row=(id,tier,basis)=>({kind:'submission',source:'hoshi',jobId:id,at:ago(40),

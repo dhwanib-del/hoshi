@@ -1,5 +1,5 @@
 // PRD section 9: scores prioritize conversations; never predict hiring odds.
-import {jobStage,gateState,descriptionCoverage} from './model.js';
+import {jobStage,gateState,descriptionCoverage,REPLY_STEPS} from './model.js';
 import {freshnessScore,describeAge,recencyOf,isFresh} from './freshness.js';
 // Weight table decided 2026-11-03: the 2027-agent spec's terms and priorities,
 // with a connection term kept rather than dropped to 0. Authorization rises from
@@ -75,7 +75,19 @@ export function decayClock(contactId,events,now=new Date()){
 // the basis is DERIVED from the evidence and travels with the tier, because
 // everything downstream — the score line, the stored row, a tier-segmented rate
 // — was reading one label over two populations with opposite meanings.
-export const C1_BASES=Object.freeze(['alum','spent']);
+export const C1_BASES=Object.freeze(['alum','spent','declined']);
+// PRD §9.2 invariant (24), added 2026-11-18. The tier claims what the person can
+// do TODAY, and it was derived from a reply row's existence rather than from the
+// answer in it — so a decline scored C3, the whole connection weight, identical
+// to a referral offer, and C3 never decays, so it was permanent. The latest
+// COUNTERPARTY row governs: monotone in evidence that is not hers, as invariant
+// (19) made decay, so nothing she sends moves it and a later offer still lifts
+// it. Her only repair for a row already written is to append the correcting one,
+// because the tier is derived from the log rather than stored beside it.
+export function latestAnswer(contactId,events){
+ const replies=events.filter(e=>e.kind==='reply'&&e.contactId===contactId&&REPLY_STEPS.includes(e.step));
+ return replies.length?replies.reduce((a,b)=>new Date(a.at)>=new Date(b.at)?a:b):null;
+}
 export function tierFor(company,people,events,now=new Date()){
  const matches=people.filter(p=>{
   if(!p.name||!p.origin)return false;
@@ -85,8 +97,13 @@ export function tierFor(company,people,events,now=new Date()){
  let best={tier:'C0',basis:null,contact:null,reason:'Nobody found at this company'};
  for(const p of matches){
   const clock=decayClock(p.id,events,now);
+  const answer=latestAnswer(p.id,events);
   let tier='C2',basis=null;
-  if(clock.replied)tier='C3';
+  // A decline is C1 and not C0: C0's line reads "nobody found at this company",
+  // which is false of a person who wrote back. And it sits BELOW an unanswered
+  // C2 on purpose — silence is ambiguous, an explicit no is information.
+  if(answer&&answer.step==='declined'){tier='C1';basis='declined';}
+  else if(answer)tier='C3';
   else if(clock.spent){tier='C1';basis='spent';}
   else if(p.rankSource==='alumni'&&!p.saved){
    // Invariants (5) and (10) bind this construction and only this one: an
@@ -100,8 +117,9 @@ export function tierFor(company,people,events,now=new Date()){
   // display half: a spent claim prints the date that spent it rather than
   // asserting a cooled tier, and the alum claim prints the date she last
   // confirmed the employer (§9.2's clock) rather than implying it is current.
-  const why=tier==='C3'?'replied'
+  const why=tier==='C3'?(answer.step==='refer-offered'?'offered a referral '+shortDate(answer.at):'replied '+shortDate(answer.at))
    :tier==='C2'?'saved contact'
+   :basis==='declined'?'answered and could not help, '+shortDate(answer.at)
    :basis==='spent'?'no reply since '+shortDate(clock.first.at)+', '+clock.messages+(clock.messages===1?' send':' sends')
    :'from your alumni list, not saved · employer last confirmed '+shortDate(p.employerAsOf);
   if(POINTS[tier]>POINTS[best.tier])best={tier,basis,contact:p,reason:p.name+' · '+(p.sharedContext||p.origin)+' · '+why};
@@ -274,7 +292,12 @@ export function conversationBrief(state,now=new Date()){
   const lastSend=sends.at(-1),lastReply=replies.at(-1);
   const clock=decayClock(p.id,state.events,now);
   let why=null,priority=9,expires=false;
-  if(lastReply&&(!lastSend||new Date(lastReply.at)>new Date(lastSend.at))){why='Reply waiting for your response';priority=0;}
+  // Invariant (24) on the brief: "reply waiting" claims a response is OWED, and
+  // a decline owes none — three of them held block 1's top priority for ever
+  // (C3 never decays) and dropped the one expiring row beneath them.
+  const answer=latestAnswer(p.id,state.events);
+  if(answer&&answer.step==='declined'){why=null;priority=9;}
+  else if(lastReply&&(!lastSend||new Date(lastReply.at)>new Date(lastSend.at))){why='Reply waiting for your response';priority=0;}
   else if(lastSend&&!lastReply&&sends.length===1&&(now-new Date(lastSend.at))/86400000>=7){why='Follow-up due · 7+ days since your message';priority=1;}
   // §7.3's decaying row reads §9.2's clock rather than her last keystroke: before
   // invariant (19) this fired on the most recent send, so following up on day 20
@@ -411,11 +434,12 @@ export const TIERS=Object.freeze(['C3','C2','C1','C0']);
 export const TIER_ARMS=Object.freeze(TIERS.flatMap(t=>t==='C1'?C1_BASES.map(b=>'C1·'+b):[t]));
 export function tierPopulation(arm){
  const [t,basis]=String(arm).split('·');
- if(t==='C1'&&!C1_BASES.includes(basis))throw Error('C1 is two constructions; a tier population must name which (invariant 23)');
+ if(t==='C1'&&!C1_BASES.includes(basis))throw Error('C1 names '+C1_BASES.length+' constructions; a tier population must name which (invariants 23, 24)');
  return Object.freeze({of:x=>x.source==='hoshi'&&(x.personAttached?.tier||'C0')===t
    &&(!basis||x.personAttached?.tierBasis===basis),
   label:t+' applications Hoshi filled'+(basis==='alum'?', where the person was an alum you had not saved'
-   :basis==='spent'?', where you had messaged them and no reply came':'')});
+   :basis==='spent'?', where you had messaged them and no reply came'
+   :basis==='declined'?', where they answered and could not help':'')});
 }
 // The by-tier response rate IS displayable, and the figure §10.4 refused it
 // with was the wrong one. 141 is the n for a 5% → 15% move; the gap §9.1's

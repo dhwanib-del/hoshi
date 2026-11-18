@@ -41,11 +41,11 @@ test('C3 requires explicit reply record; cooldown after 21 days',()=>{
  const p={id:'c',name:'A',currentEmployer:'Example',origin:'user',saved:true};
  const send={kind:'outreach',contactId:'c',step:'sent',at:'2026-10-01T00:00:00Z'};
  assert.equal(tierFor('Example',[p],[send],new Date('2026-10-25')).tier,'C1');
- assert.equal(tierFor('Example',[p],[send,{kind:'reply',contactId:'c',at:'2026-10-22'}],new Date('2026-10-25')).tier,'C3');
+ assert.equal(tierFor('Example',[p],[send,{kind:'reply',contactId:'c',step:'replied',at:'2026-10-22'}],new Date('2026-10-25')).tier,'C3');
 });
 test('connection does not admit an unrelated role',()=>{
  const p={id:'c',name:'Person',currentEmployer:'Example',origin:'user',saved:true};
- const r=scoreJob({...job,title:'Warehouse Manager'},profile,[p],[{kind:'reply',contactId:'c',at:'2026-10-28'}]);
+ const r=scoreJob({...job,title:'Warehouse Manager'},profile,[p],[{kind:'reply',contactId:'c',step:'replied',at:'2026-10-28'}]);
  assert.equal(r.promoted,false);assert.equal(r.roleFit,0);
 });
 test('edit dates cap freshness; an unverifiable age scores zero and says so',()=>{

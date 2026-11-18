@@ -81,7 +81,10 @@ async function handle(message){
   case 'REPLY':return mutator(s=>{
    const message=[...s.events].reverse().find(e=>e.kind==='outreach'&&e.contactId===data.contactId);
    if(!message)throw Error('No outbound thread to attach this reply to');
-   return appendEvent(s,{kind:'reply',contactId:data.contactId,threadId:message.threadId,source:'user',step:data.step||'replied',arrived:data.arrivedAt?{kind:'stated',at:data.arrivedAt}:{kind:'unknown'}});
+   // No default step (invariant 24). `data.step || 'replied'` was the write-site
+   // half of the defect: a caller that did not say what came back got the word
+   // that scores the whole connection weight. appendEvent refuses it instead.
+   return appendEvent(s,{kind:'reply',contactId:data.contactId,threadId:message.threadId,source:'user',step:data.step,arrived:data.arrivedAt?{kind:'stated',at:data.arrivedAt}:{kind:'unknown'}});
   });
   case 'SAVE_ANSWER':return mutator(s=>saveAnswer(s,data));
   case 'IMPORT':return mutator(s=>{

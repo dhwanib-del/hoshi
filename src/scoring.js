@@ -1,5 +1,5 @@
 // PRD section 9: scores prioritize conversations; never predict hiring odds.
-import {jobStage,gateState,descriptionCoverage,REPLY_STEPS} from './model.js';
+import {jobStage,gateState,descriptionCoverage,REPLY_STEPS,OUTCOME_STAGES} from './model.js';
 import {freshnessScore,describeAge,recencyOf,isFresh} from './freshness.js';
 // Weight table decided 2026-11-03: the 2027-agent spec's terms and priorities,
 // with a connection term kept rather than dropped to 0. Authorization rises from
@@ -420,6 +420,51 @@ export function populationRate(key,rows,hit,skew){
  const own=rows.filter(p.of),k=own.filter(hit).length;
  return {...rate(k,own.length,'Of '+p.label),population:typeof key==='string'?key:p.label,k,n:own.length,skew};
 }
+// PRD §10.3 rule 12 and invariant (25), added 2026-11-20. Rules 8 to 11 and
+// invariant (15) all govern the DENOMINATOR, because that is where the
+// population lives — and the claim lives in the numerator, where no rule was
+// pointed. `outcome.stage` has carried `rejected` since 2026-10-16 and nothing
+// in §10 read it, so a hit test written as the inclusion list
+// `['response','screen','interview']` dropped it into the negative branch by
+// default: 40 matured submissions holding 18 rejections and 2 screens rendered
+// `2 of 40 · 5%` under the label 'A response'. That is honesty rule 9's own
+// sentence — absence of an outcome means not yet, not no — violated one half of
+// the fraction along, and it discards exactly the rows that confirm a
+// submission landed (§10.5).
+//
+// So a numerator is DERIVED from the enum it reads and has to partition it: a
+// value is counted, or it is named as excluded, and there is no third option.
+// A value added to the enum later then fails here rather than landing silently
+// on the `no` side — which is what would have happened to `declined` on
+// 2026-11-18 had reply rate been written as an inclusion list.
+export function namedNumerator(values,{of,label,excludes={}}){
+ const hit=values.filter(of),missed=values.filter(v=>!of(v));
+ if(!hit.length)throw Error('A numerator that counts no value of the enum is not a numerator (invariant 25)');
+ if(!label)throw Error('A rate needs a numerator that can name itself (invariant 25)');
+ const unnamed=missed.filter(v=>!excludes[v]);
+ if(unnamed.length)throw Error('invariant (25): '+unnamed.join(', ')+' would be counted as a no without being named');
+ const spurious=Object.keys(excludes).filter(v=>!missed.includes(v));
+ if(spurious.length)throw Error('invariant (25): '+spurious.join(', ')+' is named as excluded and is counted anyway');
+ return Object.freeze({of,label,hit:Object.freeze(hit),missed:Object.freeze(missed),
+  exclusion:missed.length?Object.freeze(missed.map(v=>excludes[v])).join('; '):null});
+}
+// The two quantities that were wearing one label. `answered` is the rate rules
+// 9, 10 and 11 are written over; `advanced` is what the old inclusion list was
+// actually computing, and it is the quantity §1's 40–65% names, so it is the one
+// §10.2's by-tier set carries.
+export const NUMERATORS=Object.freeze({
+ answered:()=>namedNumerator(OUTCOME_STAGES,{of:()=>true,
+  label:'Counting any answer from the employer, a rejection included — an outcome row is also the only thing that confirms the application landed.'}),
+ advanced:()=>namedNumerator(OUTCOME_STAGES,{of:s=>s==='screen'||s==='interview',
+  label:'Counting a screen or an interview.',
+  excludes:{response:'a bare response is not an advance',rejected:'a rejection is an answer, not an advance'}}),
+ anyReply:()=>namedNumerator(REPLY_STEPS,{of:()=>true,
+  label:'Counting every answer, a decline included — this measures whether outreach gets answered, never whether it helped (§10.5).'})
+});
+export function outcomeJobs(events,key){
+ const n=NUMERATORS[key]();
+ return {numerator:n,jobs:new Set(events.filter(x=>x.kind==='outcome'&&n.of(x.stage)).map(x=>x.jobId))};
+}
 // PRD §10.2 and §10.4, added 2026-11-13 (B-27). A tier population is built from
 // the same predicate that names it, so a tier label cannot describe a bucket it
 // did not select — invariant (15) at the tier grain. Hoshi's arm only: her own
@@ -451,14 +496,15 @@ export function tierPopulation(arm){
 // clears exactly when the thesis is being measured and licenses nothing causal.
 // Invariant (20): no comparison is computed here, and the refusal is attached
 // to the set rather than left to the copy.
-export function byTier(rows,hit,skew){
+export function byTier(rows,hit,skew,numerator){
+ if(!numerator?.label)throw Error('A rate set needs a numerator that can name itself (invariant 25)');
  // A C1 row written before the basis existed cannot be put in either arm, and
  // the store is append-only, so that is permanent: it is stated as a number
  // (rule 6's shape) rather than pooled back into one C1 bucket.
  const unbased=rows.filter(x=>x.source==='hoshi'&&x.personAttached?.tier==='C1'
   &&!C1_BASES.includes(x.personAttached?.tierBasis)).length;
- return {metric:'A response, by connection tier as recorded at submit',kind:'self-selected',
-  pooled:null,comparison:null,
+ return {metric:'A screen or an interview, by connection tier as recorded at submit',kind:'self-selected',
+  pooled:null,comparison:null,numerator:numerator.label,numeratorExclusion:numerator.exclusion,
   excluded:unbased?unbased+(unbased===1?' C1 row carries':' C1 rows carry')+' no construction and '+(unbased===1?'is':'are')+' in neither C1 arm — written before Hoshi distinguished the two, and an append-only row cannot be reclassified.':null,
   attribution:'You chose which applications carried a person, so a gap between these tiers is a difference and never the effect of the connection. Only a cohort could separate the two (§10.4).',
   note:'Hoshi’s rows only — your own entries carry no tier (invariant 9). C1 is two arms, because an alum you never wrote to and a thread that went unanswered are not the same evidence.',
@@ -470,8 +516,12 @@ export function byTier(rows,hit,skew){
 // fallback is rule 1's own: that arm shows its fraction, which is exact about
 // what was recorded. It is never a pooled percentage with a caveat under it,
 // because the caveat arrives after the number has been read.
-function bySource(metric,rows,hit,skews,note){
+function bySource(metric,rows,hit,skews,note,numerator){
  return {metric,kind:'segmented',pooled:null,note,
+  // Rule 12: a rate over an enumerated value names its hit test beside the
+  // population. A rate over a plain boolean (person attached, yes or no) reads
+  // no enum, so there is nothing to partition and nothing to name.
+  numerator:numerator?.label||null,numeratorExclusion:numerator?.exclusion||null,
   segments:[['hoshi',skews.hoshi],['user',skews.user]].map(([k,s])=>populationRate(k,rows,hit,s))};
 }
 export function activity(state,now=new Date()){
@@ -479,7 +529,11 @@ export function activity(state,now=new Date()){
  const responded=new Set(replies.map(x=>x.threadId));
  const matured=x=>(now-new Date(x.at))/86400000>=21;
  const mature=sub.filter(matured);
- const answered=new Set(e.filter(x=>x.kind==='outcome'&&['response','screen','interview'].includes(x.stage)).map(x=>x.jobId));
+ // Rule 12: both hit tests are derived from the `outcome` enum and partition it,
+ // so neither can quietly drop a value the way the old inclusion list dropped
+ // `rejected`. Two numerators, two rates — the label was doing two jobs.
+ const answered=outcomeJobs(e,'answered'),advanced=outcomeJobs(e,'advanced');
+ const anyReply=NUMERATORS.anyReply();
  // §10.5: Activity segments by `weightsVersion` or states that it did not. It
  // states that it did not, and names how many tables the denominator spans,
  // which is the fact a reader needs. Pooling two scales widens a number; it
@@ -493,13 +547,21 @@ export function activity(state,now=new Date()){
     {hoshi:'Reads high: the applications you send around Hoshi are mostly the cold ones.',
      user:'Reads high: you remember the application you cared about, not the midnight one.'},
     'Your own rows belong in this denominator — having a person attached is a fact about your behaviour, not about Hoshi. They are not pooled with Hoshi’s, because the two arms are skewed by different things (rule 11).'),
-   bySource('A response, 21+ days after submitting',mature,x=>answered.has(x.jobId),
+   bySource('A response, 21+ days after submitting',mature,x=>answered.jobs.has(x.jobId),
     {hoshi:'Reads low: a row written at review for an application never sent can only ever look like a failure.',
      user:'Reads high: the same entry selection, on the other side of the funnel.'},
-    'These two point in opposite directions, so a pooled percentage would have no direction left to state.'),
-   byTier(mature,x=>answered.has(x.jobId),
-    'Reads low: a row written at review for an application never sent can only ever look like a failure.'),
+    'These two point in opposite directions, so a pooled percentage would have no direction left to state.',
+    answered.numerator),
+   bySource('A screen or an interview, 21+ days after submitting',mature,x=>advanced.jobs.has(x.jobId),
+    {hoshi:'Reads low: for the same reason as the rate above, and most applications legitimately do not advance.',
+     user:'Reads high: the same entry selection, on the other side of the funnel.'},
+    'This is the quantity §1 compares across the referral and cold paths. It was the number the rate above was computing until 2026-11-20, under the other one’s name.',
+    advanced.numerator),
+   byTier(mature,x=>advanced.jobs.has(x.jobId),
+    'Reads low: a row written at review for an application never sent can only ever look like a failure.',
+    advanced.numerator),
    {metric:'A reply to outreach you sent',kind:'single',pooled:null,
+    numerator:anyReply.label,numeratorExclusion:anyReply.exclusion,
     note:'One regime: every outreach and reply row is yours to assert, so there is nothing here to segment (rule 11).',
     segments:[populationRate('marked',out,x=>responded.has(x.threadId),
      'Upper bound: the denominator is the sends you remembered to mark.')]}],

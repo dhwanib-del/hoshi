@@ -247,8 +247,14 @@ export function mayMarkApplied(state,jobId,{confirm=false,source='hoshi',score=n
   personAttached:score.tier!=='C0'&&score.contact?{contactId:score.contact.id,tier:score.tier,
    ...(score.tier==='C1'?{tierBasis:score.tierBasis}:{})}:null});
 }
+// PRD §10.3 rule 12, added 2026-11-20. The enum had no single definition: this
+// write site held one copy and Activity's numerator held another, as an
+// inclusion list that silently left `rejected` out. A numerator is a membership
+// test, so it is derived from the enum rather than written beside it, and a
+// value the numerator does not count has to be NAMED (invariant 25).
+export const OUTCOME_STAGES=Object.freeze(['response','screen','interview','rejected']);
 export function markOutcome(state,jobId,stage){
- if(!['response','screen','interview','rejected'].includes(stage))throw Error('Invalid outcome');
+ if(!OUTCOME_STAGES.includes(stage))throw Error('Invalid outcome: '+OUTCOME_STAGES.join(' | '));
  if(!state.jobs.some(j=>j.id===jobId))throw Error('Job missing');
  return appendEvent(state,{kind:'outcome',jobId,stage,source:'user'});
 }

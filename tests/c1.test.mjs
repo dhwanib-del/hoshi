@@ -14,7 +14,7 @@
 // standing for both.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {tierFor,scoreJob,POINTS,C1_BASES,TIER_ARMS,tierPopulation,byTier,WEIGHTS_VERSION} from '../src/scoring.js';
+import {tierFor,scoreJob,POINTS,C1_BASES,TIER_ARMS,tierPopulation,byTier,WEIGHTS_VERSION,NUMERATORS} from '../src/scoring.js';
 import {mayMarkApplied,stateFrom} from '../src/model.js';
 
 const NOW=new Date('2026-11-17T09:00:00Z');
@@ -86,7 +86,7 @@ test('invariant 23: a tier-segmented rate does not pool the two constructions',(
   roleFit:20,totalScore:80,weightsVersion:WEIGHTS_VERSION,
   personAttached:{contactId:'c-'+id,tier,...(basis?{tierBasis:basis}:{})}});
  const set=byTier([row('a','C1','alum'),row('b','C1','spent'),row('c','C1','spent'),row('d','C1')],
-  x=>x.jobId==='b',' ');
+  x=>x.jobId==='b',' ',NUMERATORS.advanced());
  const n=Object.fromEntries(set.segments.map(s=>[s.population,s.n]));
  assert.equal(n['C1 applications Hoshi filled, where the person was an alum you had not saved'],1);
  assert.equal(n['C1 applications Hoshi filled, where you had messaged them and no reply came'],2);

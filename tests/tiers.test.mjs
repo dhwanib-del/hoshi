@@ -18,7 +18,12 @@
 // attribution, because the buckets are self-selected rather than assigned.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { activity, byTier, tierPopulation, TIERS, TIER_ARMS, WEIGHTS_VERSION } from '../src/scoring.js';
+import { activity, byTier, tierPopulation, TIERS, TIER_ARMS, WEIGHTS_VERSION, NUMERATORS } from '../src/scoring.js';
+
+// Rule 12, 2026-11-20: a rate set has to name its hit test, so every byTier
+// caller passes one. The by-tier set carries the ADVANCE numerator, because
+// reaching an interview is the quantity §1's 40-65% names.
+const advanced = () => NUMERATORS.advanced();
 
 const day = 86400000;
 const now = new Date('2026-11-13T09:00:00Z');
@@ -38,7 +43,7 @@ test('invariant (9): a tier bucket never holds a row she entered herself', () =>
   const set = byTier([
     row('h1', 'C3'), row('h2', 'C0'),
     row('u1', 'C3', { source: 'user' }), row('u2', null, { source: 'user' })
-  ], () => false, 'skew');
+  ], () => false, 'skew', advanced());
   const n = Object.fromEntries(set.segments.map(s => [s.label, s.n]));
   assert.equal(n['Of C3 applications Hoshi filled'], 1);
   assert.equal(n['Of C0 applications Hoshi filled'], 1);
@@ -54,11 +59,11 @@ test('invariant (15) at the tier grain: each label names the bucket its own filt
   for (const arm of TIER_ARMS) {
     const p = tierPopulation(arm);
     assert.ok(p.label.startsWith(arm.split('·')[0] + ' applications Hoshi filled'));
-    const seg = byTier(rows, () => false, 'skew').segments.find(s => s.label === 'Of ' + p.label);
+    const seg = byTier(rows, () => false, 'skew', advanced()).segments.find(s => s.label === 'Of ' + p.label);
     assert.equal(seg.n, rows.filter(p.of).length);
   }
   assert.ok(TIERS.includes('C1'), 'C1 is still a tier value even though it is not a population');
-  assert.match(byTier(rows, () => false, 'skew').excluded, /1 C1 row carries/);
+  assert.match(byTier(rows, () => false, 'skew', advanced()).excluded, /1 C1 row carries/);
 });
 
 test('invariant (20): disjoint intervals still license no attribution', () => {
@@ -69,7 +74,7 @@ test('invariant (20): disjoint intervals still license no attribution', () => {
   for (let i = 0; i < 150; i++) rows.push(row('c0-' + i, 'C0'));
   const hits = new Set([...Array(8).keys()].map(i => 'c3-' + i)
     .concat([...Array(4).keys()].map(i => 'c0-' + i)));
-  const set = byTier(rows, x => hits.has(x.jobId), 'skew');
+  const set = byTier(rows, x => hits.has(x.jobId), 'skew', advanced());
   const c3 = set.segments.find(s => s.label.startsWith('Of C3'));
   const c0 = set.segments.find(s => s.label.startsWith('Of C0'));
   assert.ok(c3.visible && c0.visible, 'both arms clear rule 1’s floor at this volume');
@@ -83,19 +88,21 @@ test('invariant (20): disjoint intervals still license no attribution', () => {
 
 test('rule 1 is what binds a tier arm, and its fallback is a fraction', () => {
   const rows = [row('x', 'C3'), row('y', 'C3'), row('z', 'C3')];
-  const c3 = byTier(rows, () => true, 'skew').segments.find(s => s.label.startsWith('Of C3'));
+  const c3 = byTier(rows, () => true, 'skew', advanced()).segments.find(s => s.label.startsWith('Of C3'));
   assert.equal(c3.visible, false);
   assert.match(c3.summary, /3 of 3/);
   assert.match(c3.summary, /7 more/);
 });
 
-test('§10.2 names four rates: the un-tiered response rate and the by-tier one both appear', () => {
+test('§10.2 names five rates, and the by-tier one is the advance rate (rule 12)', () => {
   const a = activity({ events: [row('h1', 'C3'), responded('h1')] }, now);
   const metrics = a.rates.map(r => r.metric);
   assert.ok(metrics.includes('A response, 21+ days after submitting'),
     'the rate rules 9, 10 and 11 are written over');
-  assert.ok(metrics.includes('A response, by connection tier as recorded at submit'),
-    'the rate §10.2 enumerated');
+  assert.ok(metrics.includes('A screen or an interview, 21+ days after submitting'),
+    'the quantity the response label used to be computing');
+  assert.ok(metrics.includes('A screen or an interview, by connection tier as recorded at submit'),
+    'the by-tier set carries the advance numerator — the quantity §1 compares');
   assert.equal(a.rates.filter(r => r.attribution).length, 1,
     'only the self-selected set carries the attribution refusal');
 });

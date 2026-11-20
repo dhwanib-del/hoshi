@@ -176,6 +176,10 @@ function activityView(){
  '<div class="card" style="margin-top:10px"><strong>'+state.jobs.filter(j=>j.origin==='google-sheets-csv'&&['Applied','Rejected','Interview','Assessment','Offer'].includes(j.sheetStatus)).length+' applications imported from CSV</strong><p class="micro muted">External snapshot only. These are not counted as Hoshi-observed submissions or used in rates.</p></div>'+
  sec('Rates are estimates','95% Wilson interval, never pooled across two regimes')+
  a.rates.map(r=>'<div class="card"><strong>'+esc(r.metric)+'</strong>'+
+  // PRD §10.3 rule 12: the hit test is named above the numbers, beside the
+  // population each segment names. A percentage is recheckable from `6 of 20`
+  // and what counted as a hit is recheckable from nothing on the surface.
+  (r.numerator?'<p class="micro muted">'+esc(r.numerator)+(r.numeratorExclusion?' Not counted: '+esc(r.numeratorExclusion)+'.':'')+'</p>':'')+
   r.segments.map(s=>'<div class="rate"><strong>'+esc(s.summary)+'</strong><small>'+esc(s.label)+'. '+esc(s.skew)+'</small></div>').join('')+
   (r.attribution?'<p class="micro muted"><strong>A difference, not an effect.</strong> '+esc(r.attribution)+'</p>':'')+
   (r.excluded?'<p class="micro muted">'+esc(r.excluded)+'</p>':'')+

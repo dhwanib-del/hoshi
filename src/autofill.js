@@ -1,9 +1,14 @@
-// Each injected function contains its own host and protected-field guard; Chrome serializes the function only.
-export function inspectFields(){
+// The guard is passed in rather than inlined twice. These functions cannot
+// import -- Chrome serializes the function body only -- so a copied regex is
+// the least-derived consumer of PRD Principle 3's guard and goes stale the
+// moment model.js widens it. Absent, they refuse rather than fill unguarded.
+// Each injected function still carries its own host allowlist for the same reason.
+export function inspectFields(guard){
  const host=location.hostname;
  const allowed=['job-boards.greenhouse.io','boards.greenhouse.io','jobs.lever.co','jobs.ashbyhq.com','myworkdayjobs.com','smartrecruiters.com','icims.com','workable.com','jobvite.com'];
  const trusted=allowed.some(x=>host===x||host.endsWith('.'+x));
- const protectedField=text=>/\b(race|ethnicity|gender|sex|disability|veteran|birth.?date|date.?of.?birth|sexual.?orientation|religion)\b/i.test(text);
+ const protectedField=text=>new RegExp(guard,'i').test(text);
+ if(!guard)return {error:'No protected-field guard supplied',fields:[]};
  if(!trusted)return {error:'Outside supported ATS host',fields:[]};
  const fields=[];
  for(const input of [...document.querySelectorAll('input[type="text"],input[type="email"],input[type="tel"],textarea')].slice(0,120)){
@@ -18,11 +23,12 @@ export function inspectFields(){
  }
  return {fields};
 }
-export function fillReviewed(pairs){
+export function fillReviewed(pairs,guard){
  const host=location.hostname;
  const allowed=['job-boards.greenhouse.io','boards.greenhouse.io','jobs.lever.co','jobs.ashbyhq.com','myworkdayjobs.com','smartrecruiters.com','icims.com','workable.com','jobvite.com'];
  const trusted=allowed.some(x=>host===x||host.endsWith('.'+x));
- const protectedField=text=>/\b(race|ethnicity|gender|sex|disability|veteran|birth.?date|date.?of.?birth|sexual.?orientation|religion)\b/i.test(text);
+ const protectedField=text=>new RegExp(guard,'i').test(text);
+ if(!guard)return {filled:0,errors:['No protected-field guard supplied']};
  if(!trusted)return {filled:0,errors:['Unsupported ATS host']};
  let filled=0;const errors=[];
  for(const p of pairs){

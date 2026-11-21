@@ -1,6 +1,13 @@
 // Executed ONLY on user request, ONLY for known ATS hosts with granted access.
 // No global content-script registrations; never observes other tabs or private LinkedIn.
-export function captureCurrentPage(){
+// `cap` is PRD §8.4's one description bound, PASSED IN rather than written here:
+// this function is injected with chrome.scripting.executeScript and cannot
+// import, so a local literal would be invariant (13)'s least-derived consumer —
+// which is exactly what it was: this path cut shorter than the adapter path did,
+// for the same field of the same shape, so the stored text depended on how she
+// met the job. Absent, it refuses rather than storing under a bound nobody set.
+export function captureCurrentPage(cap){
+ if(!Number.isFinite(cap)||cap<=0)return {error:'No description bound was passed; nothing was read.'};
  const host=location.hostname;
  const valid=[
   'job-boards.greenhouse.io','boards.greenhouse.io','jobs.lever.co','jobs.ashbyhq.com',
@@ -22,14 +29,38 @@ export function captureCurrentPage(){
  const org=structured?.hiringOrganization?.name?{value:structured.hiringOrganization.name,selector:'JSON-LD JobPosting.hiringOrganization.name'}:from(['[data-testid="company-name"]','[itemprop="hiringOrganization"]','.company-name']);
  const loc=structured?.jobLocation?.address?.addressLocality?{value:structured.jobLocation.address.addressLocality,selector:'JSON-LD JobPosting.jobLocation.address.addressLocality'}:from(['.location','.posting-categories .location','[data-testid="job-location"]']);
  const url=location.origin+location.pathname;
- const handle=(host==='job-boards.greenhouse.io'||host==='boards.greenhouse.io'||host==='jobs.lever.co'||host==='jobs.ashbyhq.com')?location.pathname.split('/').filter(Boolean)[0]:null;
+ const segments=location.pathname.split('/').filter(Boolean);
+ const handle=(host==='job-boards.greenhouse.io'||host==='boards.greenhouse.io'||host==='jobs.lever.co'||host==='jobs.ashbyhq.com')?segments[0]:null;
  const provider=host.includes('greenhouse')?'greenhouse':host.includes('lever')?'lever':host.includes('ashby')?'ashby':host.includes('workday')?'workday':'other';
- const rawDate=structured?.datePosted;
+ // PRD §8.5 (2026-11-02): parse the provider's own job id out of the same URL
+ // rule 1 parses the handle from, so dedup key 2 is reachable from this path and
+ // §8.8 can close a page-origin record. null when the URL carries no id —
+ // unmatched, never treated as absent. Read off a URL the user navigated to,
+ // never out of page prose (Principle 2).
+ const idFromUrl=provider==='greenhouse'?(segments[segments.indexOf('jobs')+1]||null)
+  :(provider==='lever'||provider==='ashby')?(segments[1]||null):null;
+ const providerJobId=idFromUrl&&/^[A-Za-z0-9][A-Za-z0-9-]{2,63}$/.test(idFromUrl)?idFromUrl:null;
+ // One bound, and the length before the cut rides the record so a term scoring 0
+ // over this text can say whether it saw all of it (PRD invariant 22).
+ const rawDescription=String(structured?.description||'').replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();
+ const posted=structured?.datePosted||null;
+ const modified=structured?.dateModified||null;
+ const validDate=v=>v&&Number.isFinite(Date.parse(v))?new Date(Date.parse(v)).toISOString():null;
  return {
   title:title?.value||'',company:org?.value||'',location:loc?.value||'',applyUrl:url,
-  provider,origin:'page',listingState:'unknown',date:rawDate||null,dateKind:rawDate?'posted':'none',
-  descriptionText:String(structured?.description||'').replace(/<[^>]*>/g,' ').slice(0,1400),
-  provenance:{title:title?.selector||'unavailable',company:org?.selector||'unavailable',location:loc?.selector||'unavailable',date:rawDate?'JSON-LD JobPosting.datePosted':'unavailable'},
+  provider,origin:'page',listingState:'unknown',providerJobId,
+  // Four distinct timestamp kinds; discoveredAt is this sighting and is never
+  // used as the posting's age (src/freshness.js).
+  timestamps:{publishedAt:validDate(posted),modifiedAt:validDate(modified),discoveredAt:new Date().toISOString(),repostedAt:null},
+  descriptionText:rawDescription.slice(0,cap),
+  descriptionSourceChars:rawDescription?rawDescription.length:null,
+  provenance:{
+   title:title?.selector||'unavailable',company:org?.selector||'unavailable',location:loc?.selector||'unavailable',
+   providerJobId:providerJobId?'URL path segment':'unavailable',
+   descriptionText:rawDescription?'JSON-LD JobPosting.description':'unavailable',
+   publishedAt:validDate(posted)?'JSON-LD JobPosting.datePosted':'unavailable',
+   modifiedAt:validDate(modified)?'JSON-LD JobPosting.dateModified':'unavailable'
+  },
   harvestedBoard:handle&&['greenhouse','lever','ashby'].includes(provider)?{provider,handle,handleSource:'harvested',sourceUrl:url}:null
  };
 }

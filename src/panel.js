@@ -2,6 +2,7 @@ import {morningBrief,scoreJob,activity,freshJobs,coverage,BRIEF_CAPS} from './sc
 import {stardust,jobStage,cleanText,listingStatus} from './model.js';
 import {describeAge,recencyOf,UNVERIFIED_LABEL} from './freshness.js';
 import {parseBoardUrl,PROVIDERS} from './discovery.js';
+import {sponsorshipNote} from './sponsorship.js';
 import {POINTS} from './scoring.js';
 const POINTS_FOR=t=>POINTS[t]??0;
 let state=null,tab='orbit',search='',jobFilter='fresh',subview=null,review=null;
@@ -52,10 +53,18 @@ function freshCard(row,opts={}){
  // empty box. A missing check is not a low score and must not look like one.
  if(score.gate!=='ranked'){
   const excluded=score.gate==='excluded';
+  // PRD §9.1 invariant (26): sponsorship history scores nothing and satisfies
+  // no gate — its one job is telling her which held job is worth checking
+  // first. Nothing populates `sponsorshipLookup` today, so this renders the
+  // no-claim state, which is the honest day-one answer and not a placeholder.
+  const sponsor=sponsorshipNote(job.sponsorshipLookup);
+  const sponsorLine='<p class="micro muted">'+esc(sponsor.line)+'</p>'+
+   (sponsor.filers.length>1?sponsor.filers.map(f=>'<p class="micro muted">· '+esc(f.line)+'</p>').join(''):'');
   return '<article class="card'+(excluded?' dim':'')+'"><p class="card-title">'+esc(job.title)+'</p>'+
    '<div class="micro muted">'+esc(job.company)+' · '+esc(job.location||'Location not verified')+'</div>'+
    ageLine+extra+
    '<p class="gate-note '+(excluded?'bad':'')+'">'+esc(excluded?score.reason:'Needs '+score.missingChecks.length+' check'+(score.missingChecks.length===1?'':'s')+' before it can be ranked: '+score.missingChecks.join(' and '))+'</p>'+
+   (excluded?'':sponsorLine)+
    (score.contact?'<p class="person">★ '+esc(score.contact.name)+' — '+esc(score.tier)+', worth '+POINTS_FOR(score.tier)+' once this is verified</p>'
      :contacts?'<p class="person">'+contacts+' contact'+(contacts===1?'':'s')+' at this company</p>':'')+
    '<div class="action-row">'+(excluded?'':button('Verify now','verify-job',job.id))+

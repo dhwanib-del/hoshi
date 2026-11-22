@@ -35,7 +35,7 @@ These are enforced in code and covered by tests. They are not aspirations.
 
 ## 4. Current state
 
-Verified by test run, not asserted. 241 tests passing as of 2026-09-27.
+**`[assumption]` — the whole section.** Everything below is the user's own account of her build, carried unverified: nothing in this document sources it, and what is built is hers to state (B-14).
 
 **Built and working:**
 
@@ -48,14 +48,9 @@ Verified by test run, not asserted. 241 tests passing as of 2026-09-27.
 - Career Search Profile with role lanes and explainable eligibility rejection.
 - Side panel: Orbit, Jobs, People, Activity, plus the autofill review sub-page.
 
-**Not built:**
+**Not built, and not yet specified:** the resume library and tailoring with diff, and interview mode.
 
-- Not yet specified: resume library and tailoring with diff, interview mode.
-
-**Blocked:**
-
-- Classifier backend (`api.hoshi.app`) does not exist. Unfamiliar career pages surface for confirmation rather than resolving. Fails closed, so this costs coverage, not correctness.
-- Generation backend does not exist. Cover letters, free-text answers and outreach drafts cannot run.
+**Blocked: neither backend exists.** The classifier backend (`api.hoshi.app`) is absent, so unfamiliar career pages surface for confirmation rather than resolving — failing closed, which costs coverage and not correctness; the generation backend is absent, so cover letters, free-text answers and outreach drafts cannot run (Q2).
 
 ---
 
@@ -389,7 +384,7 @@ type HoshiEvent = { at: ISODate } & (
 
 ## 11. The answer bank
 
-Added 2026-10-22. §4 lists the answer bank as unspecified and the generation backend as absent, so free-text answers "cannot run" — but the part of them that needs no model is recall. The bank stores **answers the user wrote or edited**, never model output she never saw, which makes it buildable in the local-only mode Q2 may make permanent (B-08), unlike the cover letters and free-text generation listed beside it. Each stored answer records the question as the form asked it, the application it was first written for, its `scope`, and `editedAt`. `[assumption]` that free-text questions are where the remaining per-application minutes go now that autofill covers the structured fields (§4): §10.2's median-time metric is what would retire that tag, and the category's form-abandonment statistics do not — B-19 records which ones were read and why they were refused.
+Added 2026-10-22. §4 lists the generation backend as absent, so free-text answers "cannot run" — but the part of them that needs no model is recall. The bank stores **answers the user wrote or edited**, never model output she never saw, which makes it buildable in the local-only mode Q2 may make permanent (B-08), unlike the cover letters and free-text generation listed beside it. Each stored answer records the question as the form asked it, the application it was first written for, its `scope`, and `editedAt`. `[assumption]` that free-text questions are where the remaining per-application minutes go now that autofill covers the structured fields (§4): §10.2's median-time metric is what would retire that tag, and the category's form-abandonment statistics do not — B-19 records which ones were read and why they were refused.
 
 **Scope decides whether an answer may be filled at all, and a competitor's own documentation is why that needs saying.** Simplify saves custom answers — *"The fields below are automatically saved in this browser only"* — and then *"we'll automatically fill in inputs with corresponding labels using these values"*, which is label matching with no company scoping documented; with its AI setting on, *"Copilot will attempt to autofill unique questions using your profile"* ([Simplify help](https://help.simplify.jobs/article/18-saving-custom-questions) and [autofill settings](https://help.simplify.jobs/articles/8686025-manage-autofill-settings-in-the-simplify-extension)). The second is the inference Principle 2 forbids, and Hoshi does not do it with a backend or without one. The first is the trap that earns a rule: an answer to *"why do you want to work here"* is stable in form and false the moment it changes company, and a stale specific is worse than a generic one. So every answer carries `scope: 'employer-independent' | 'employer-specific'`. Employer-independent answers — work authorization, graduation date, notice period — are facts stated once and may be written to a field verbatim. Employer-specific answers are **offered as a seed and never written to a field**: **invariant (7)**, in §9.3's CI-blocking shape, is that no field may be filled from an `employer-specific` answer unless its `editedAt` is later than the application it was written for, and that no answer naming a company other than this application's may be filled in either scope — a refusal read off the user's own stored text, not a name extracted from it. (Review-before-submit is not the difference here: Simplify's docs say *"You still review the completed application and click the final Submit button yourself"* too. Scoping is.)
 

@@ -157,7 +157,8 @@ test('invariant (16): unmatched < floor <= adjacent < lane, as shares of role', 
 test('invariant (16): the band is named, and 0 says "not found" rather than "not yours"', () => {
   const profile = { roleLanes: ['UX Researcher'], locations: [], portfolioProjects: [] };
   assert.deepEqual(roleBand({ title: 'Senior UX Researcher' }, profile),
-    { points: ROLE_BANDS.lane, basis: 'lane', lane: 'UX Researcher', laneTerm: null, field: 'title' });
+    // `lanes` is how invariant (27) tells "no lane matched" from "no lane saved".
+    { points: ROLE_BANDS.lane, basis: 'lane', lane: 'UX Researcher', laneTerm: null, field: 'title', lanes: 1 });
   // Adjacent is now a shared term with a lane SHE wrote (invariant 18), so a
   // title sharing no word with any lane is unmatched rather than half-credited.
   assert.equal(roleBand({ title: 'UX Writer' }, profile).basis, 'adjacent');

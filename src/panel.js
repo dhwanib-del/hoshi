@@ -1,4 +1,4 @@
-import {morningBrief,scoreJob,activity,freshJobs,coverage,BRIEF_CAPS} from './scoring.js';
+import {morningBrief,scoreJob,activity,freshJobs,coverage,BRIEF_CAPS,evidenceSplit} from './scoring.js';
 import {stardust,jobStage,cleanText,listingStatus} from './model.js';
 import {describeAge,recencyOf,UNVERIFIED_LABEL} from './freshness.js';
 import {parseBoardUrl,PROVIDERS} from './discovery.js';
@@ -71,16 +71,28 @@ function freshCard(row,opts={}){
     (job.applyUrl?button('Open posting ↗','open-job',job.id,'ghost'):'')+'</div></article>';
  }
 
- const top=score.terms.filter(t=>t.points>0).sort((a,b)=>b.points-a.points);
- const breakdown=top.map(t=>'<span class="term"><b>'+t.points+'</b> '+esc(TERM_LABEL[t.key])+'</span>').join('');
- const missed=score.terms.filter(t=>t.points===0).map(t=>TERM_LABEL[t.key]);
+ // PRD §9.4 invariant (27): a bare `0` is a claim, so only a term that actually
+ // compared something gets one. A term with nothing on either side of its
+ // comparison is WITHHELD and says which input was missing — this chip row used
+ // to pool both into `0 fresh, portfolio`, which rendered four runs' worth of
+ // carefully three-state zeros as absence on the one surface she reads.
+ const split=evidenceSplit(score.terms);
+ const breakdown=split.scored.map(t=>'<span class="term"><b>'+t.points+'</b> '+esc(TERM_LABEL[t.key])+'</span>').join('');
+ const missed=split.zeros.map(t=>TERM_LABEL[t.key]);
+ const withheld=split.withheld.map(t=>TERM_LABEL[t.key]);
+ const withheldNote=split.unevidenced
+  ?'<p class="micro muted">'+split.unevidenced+' term'+(split.unevidenced===1?'':'s')
+   +' had nothing to compare, so '+(split.unevidenced===1?'it':'they')+' scored nothing rather than scoring a no: '
+   +esc(split.missing.join(', '))+'.</p>':'';
  return '<article class="card"><div class="head"><div class="card-body"><p class="card-title">'+esc(job.title)+'</p>'+
   '<div class="micro muted">'+esc(job.company)+' · '+esc(job.location||'Location not verified')+'</div></div>'+
   '<div class="score-inline'+(score.promoted?' hot':'')+'">'+score.total+'</div></div>'+
   ageLine+extra+
   (score.contact?'<p class="person">★ '+esc(score.contact.name)+' — '+esc(score.tier)+'</p>':'')+
   (score.portfolioProject?'<p class="person folio">◆ '+esc(score.portfolioProject)+'</p>':'')+
-  '<div class="breakdown">'+breakdown+(missed.length?'<span class="term zero">0 '+esc(missed.join(', '))+'</span>':'')+'</div>'+
+  '<div class="breakdown">'+breakdown+(missed.length?'<span class="term zero">0 '+esc(missed.join(', '))+'</span>':'')+
+   (withheld.length?'<span class="term missing">— '+esc(withheld.join(', '))+'</span>':'')+'</div>'+
+  withheldNote+
   '<details class="disclosure"><summary>Evidence</summary><ul class="line-list">'+
    '<li>Age read from: '+esc(recency.basis==='none'?'nothing — only Hoshi’s own first sighting, which is not a posting date':recency.basis)+'</li>'+
    '<li>Originally posted: '+esc(job.timestamps?.publishedAt||'not published by this source')+'</li>'+

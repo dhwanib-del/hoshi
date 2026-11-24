@@ -151,15 +151,39 @@ export function portfolioMatch(job,profile){
  // and §8.8's rule a third time: a failure to see is not an observation of
  // absence. So the line says which of the three it is and never asserts that no
  // project matches a posting Hoshi only read part of.
- if(best)return {points:WEIGHTS.portfolio,project:best.project.name,coverage,
+ if(best)return {points:WEIGHTS.portfolio,project:best.project.name,coverage,basis:'match',
   why:best.project.name+' — matched on '+best.hits.slice(0,3).join(', ')};
- if(!text.trim()||coverage==='none')return {points:0,project:null,coverage,
+ // Invariant (27), added 2026-11-24. Invariant (22) made this term's zero
+ // three-state on the POSTING's side of the comparison and left her side with
+ // one state, so a profile holding no tagged project printed "no saved project
+ // matches this posting" — a comparison that never ran, asserted as its result.
+ // Her side is checked FIRST: with nothing saved, the posting's coverage cannot
+ // matter. Same rule as §8.8's, on the other end of the same term.
+ const tagged=(profile?.portfolioProjects||[]).some(p=>(p?.tags||[]).some(Boolean));
+ if(!tagged)return {points:0,project:null,coverage,basis:'no-input',
+  why:'no saved project carries a tag, so nothing was compared — this term is yours to fill in'};
+ if(!text.trim()||coverage==='none')return {points:0,project:null,coverage,basis:'no-description',
   why:'no description stored for this posting — nothing to match against'};
- if(coverage==='partial')return {points:0,project:null,coverage,
+ if(coverage==='partial')return {points:0,project:null,coverage,basis:'partial',
   why:'no saved project in the '+(job.descriptionText||'').length+' characters stored of '
    +(Number.isFinite(job.descriptionSourceChars)?job.descriptionSourceChars+' — the rest was not read'
      :'this posting — how much was cut is not recorded')};
- return {points:0,project:null,coverage,why:'no saved project matches this posting'};
+ return {points:0,project:null,coverage,basis:'no-match',why:'no saved project matches this posting'};
+}
+/**
+ * PRD §9.4 invariant (27). The same asymmetry one term over, with a third case
+ * the old expression also got wrong: a posting that states no location at all
+ * scored 0 and printed "not matched to your locations", which blames her list
+ * for a field the provider never sent.
+ */
+export function locationTerm(job,profile){
+ if(job?.locationMatch===true)return {points:WEIGHTS.location,basis:'match',why:'matches a location you listed'};
+ const saved=(profile?.locations||[]).map(l=>String(l||'').trim()).filter(Boolean);
+ if(!saved.length)return {points:0,basis:'no-input',why:'no locations saved, so nothing was compared — this term is yours to fill in'};
+ if(!String(job?.location||'').trim())return {points:0,basis:'no-field',why:'this posting states no location'};
+ return saved.some(l=>lower(job.location).includes(lower(l)))
+  ?{points:WEIGHTS.location,basis:'match',why:'matches a location you listed'}
+  :{points:0,basis:'no-match',why:'not one of the locations you listed'};
 }
 
 /**
@@ -188,24 +212,103 @@ function band(b){
  // Fail closed, in invariant (17)'s shape: points without nameable evidence are
  // withdrawn rather than kept. Principle 6 enforced per band, not per term.
  return b.points>0&&!roleEvidence(b)
-  ?{points:ROLE_BANDS.unmatched,basis:'unmatched',lane:null,laneTerm:null,field:b.field}:b;
+  ?{points:ROLE_BANDS.unmatched,basis:'unmatched',lane:null,laneTerm:null,field:b.field,lanes:b.lanes}:b;
 }
 export function roleBand(job,profile){
  const title=lower(job.title),titleWords=new Set(laneWords(title));
  const lanes=(profile?.roleLanes||[]).map(l=>String(l||'').trim()).filter(Boolean);
  const lane=lanes.find(l=>title.includes(lower(l)));
- if(lane)return band({points:ROLE_BANDS.lane,basis:'lane',lane,laneTerm:null,field:'title'});
+ if(lane)return band({points:ROLE_BANDS.lane,basis:'lane',lane,laneTerm:null,field:'title',lanes:lanes.length});
  // Adjacent is a SHARED TERM with a lane she wrote, so the line can print which
  // word of which lane earned it and she can judge it (§9.2's move on an employer
  // date: print the thing rather than guess a window). `[assumption]` that a whole
  // shared word is the right adjacency test — it is a judgment, like the 0.64.
  for(const l of lanes){
   const laneTerm=laneWords(l).find(w=>titleWords.has(w));
-  if(laneTerm)return band({points:ROLE_BANDS.adjacent,basis:'adjacent',lane:l,laneTerm,field:'title'});
+  if(laneTerm)return band({points:ROLE_BANDS.adjacent,basis:'adjacent',lane:l,laneTerm,field:'title',lanes:lanes.length});
  }
- return {points:ROLE_BANDS.unmatched,basis:'unmatched',lane:null,laneTerm:null,field:'title'};
+ // `lanes` is what tells "no lane matched this title" from "she saved no lanes":
+ // invariant (18) fails the band closed either way, and only the first of those
+ // is a statement about the posting (invariant 27).
+ return {points:ROLE_BANDS.unmatched,basis:'unmatched',lane:null,laneTerm:null,field:'title',lanes:lanes.length};
 }
 
+/**
+ * PRD §9.4 invariant (27), added 2026-11-24 (B-30).
+ *
+ * A 0 is a claim, and several of these terms have a 0 that is not one. Four
+ * runs gave four terms a zero that distinguishes a failure to observe from an
+ * observation of absence — §9.6's `unmatched`, §9.5's `dateKind:'none'`, §8.4's
+ * truncated description, §9.1's held gates — and every one of those is reached
+ * by Hoshi having nothing on the POSTING's side. Her side was never specified,
+ * so an empty profile printed "no saved project matches this posting" and "not
+ * matched to your locations", which are comparisons that never ran stated as
+ * their results. And the card then pooled every zero into one `0 a, b, c` chip,
+ * so the three-state zeros the document had been careful to build were rendered
+ * as absence on the one surface she reads.
+ *
+ * So a term's `claim` is DERIVED from the basis and the inputs it read
+ * (invariant 13's shape), a `no-evidence` term names the absent input rather
+ * than printing the negative, and no surface prints a bare `0` for one.
+ */
+const claimOf=(points,unevidenced)=>points>0?'scored':unevidenced?'no-evidence':'zero';
+const UNCHECKED={eligibility:['eligible','ineligible'],authorization:['confirmed','not-sponsored']};
+const FOLIO_MISSING={'no-input':'no saved projects','no-description':'no description stored',
+ partial:'only part of the description stored'};
+const LOC_MISSING={'no-input':'no locations saved','no-field':'this posting states no location'};
+export const TERM_LINE_LABEL=Object.freeze({role:'role',eligibility:'eligibility',
+ authorization:'work authorization',connection:'connection',freshness:'freshness',
+ portfolio:'portfolio',location:'location'});
+function evidencedTerms({role,roleFit,job,eligibility,authorization,tier,people,fresh,folio,loc}){
+ const direct=role.basis==='lane',partial=role.basis==='adjacent';
+ const t=(key,points,note,why,unevidenced,missing)=>{
+  const claim=claimOf(points,!!unevidenced);
+  return {key,points,note,why,claim,missing:claim==='no-evidence'?missing:null};
+ };
+ return [
+  // Invariant (18): a nonzero band names the lane that earned it. `adjacent`
+  // names the shared word too, because that word is the whole of its claim.
+  t('role',roleFit,direct?role.lane:partial?role.lane+' · “'+role.laneTerm+'”':'no saved lane found in the title',
+   direct?'matches your saved lane “'+role.lane+'”'
+    :partial?'shares “'+role.laneTerm+'” with your saved lane “'+role.lane+'” — not the lane itself'
+     :role.lanes?'no saved lane found in this title — not a judgment about the role'
+      :'no role lanes saved, so no lane was looked for',
+   role.basis==='unmatched'&&!role.lanes,'no role lanes saved'),
+  t('eligibility',eligibility,job.eligibility||'unverified',job.eligibility||'not verified',
+   !UNCHECKED.eligibility.includes(job.eligibility),'graduation eligibility not checked'),
+  t('authorization',authorization,job.authorization||'unverified',job.authorization||'not verified',
+   !UNCHECKED.authorization.includes(job.authorization),'sponsorship policy not checked'),
+  // C0's line reads "nobody found at this company", which is false of a user
+  // who has entered nobody anywhere — B-10's empty list is a no-claim state.
+  t('connection',POINTS[tier.tier],tier.contact?.name||null,
+   people.length||tier.tier!=='C0'?tier.reason:'no people saved yet, so no company was matched',
+   tier.tier==='C0'&&!people.length,'no people saved'),
+  t('freshness',fresh.points,fresh.basis==='none'?null:fresh.band,fresh.line,
+   fresh.basis==='none','no posting date'),
+  t('portfolio',folio.points,folio.project,folio.why,
+   FOLIO_MISSING[folio.basis],FOLIO_MISSING[folio.basis]),
+  t('location',loc.points,loc.points?'your locations':null,loc.why,
+   LOC_MISSING[loc.basis],LOC_MISSING[loc.basis])
+ ];
+}
+/**
+ * The same array, as the lines §9.4 specifies. A no-evidence term is prefixed
+ * `—` and never `+0`: a zero is a claim, and this term is not making one.
+ */
+export const termLines=terms=>terms.map(x=>
+ (x.claim==='no-evidence'?'—':'+'+x.points)+' '+TERM_LINE_LABEL[x.key]+' · '+x.why);
+/**
+ * One split, derived from the array the card renders, so the withheld count can
+ * never come from a different list than the chips (invariant 15's shape at the
+ * card's grain).
+ */
+export function evidenceSplit(terms=[]){
+ const by=c=>terms.filter(x=>x.claim===c);
+ return {scored:by('scored').slice().sort((a,b)=>b.points-a.points),
+  zeros:by('zero'),withheld:by('no-evidence'),
+  unevidenced:by('no-evidence').length,
+  missing:[...new Set(by('no-evidence').map(x=>x.missing).filter(Boolean))]};
+}
 export function scoreJob(job,profile,people=[],events=[],now=new Date()){
  // Derived from WEIGHTS, never hardcoded: a weight change must not leave a
  // literal behind. (It did, on the first pass: authorization kept scoring 5
@@ -217,8 +320,8 @@ export function scoreJob(job,profile,people=[],events=[],now=new Date()){
  const tier=tierFor(job.company,people,events,now);
  const fresh=freshness(job,now);
  const folio=portfolioMatch(job,profile);
- const location=job.locationMatch===true?WEIGHTS.location
-  :(profile.locations||[]).some(l=>l&&lower(job.location).includes(lower(l).trim()))?WEIGHTS.location:0;
+ const loc=locationTerm(job,profile);
+ const location=loc.points;
  // Invariant (12), PRD §9.1: only a job whose gates are both VERIFIED is ranked,
  // so every ranked job scores eligibility and authorization in full and the
  // ranked range starts at RANKED_FLOOR. A held job carries no total at all — a
@@ -231,6 +334,7 @@ export function scoreJob(job,profile,people=[],events=[],now=new Date()){
  const qualified=rankable&&roleFit>=ROLE_FLOOR;
  const threshold=profile.priorityThreshold??70;
  const promoted=qualified&&(total>=threshold||tier.tier!=='C0');
+ const terms=evidencedTerms({role,roleFit,job,eligibility,authorization,tier,people,fresh,folio,loc});
  return {total,rankable,gate:gate.state,missingChecks:gate.missing,roleFit,
   // §9.6: the band and the lane that produced it, so a surface can say "no lane
   // matched this title" rather than implying the role is wrong.
@@ -247,27 +351,11 @@ export function scoreJob(job,profile,people=[],events=[],now=new Date()){
   // Structured breakdown so a surface can show WHY without parsing prose.
   // The panel led with a score box and buried all of this behind a disclosure,
   // which made a scored job and an unscored one look identical.
-  terms:[
-   // Invariant (18): a nonzero band names the lane that earned it. `adjacent`
-   // names the shared word too, because that word is the whole of its claim.
-   {key:'role',points:roleFit,note:direct?role.lane:partial?role.lane+' · “'+role.laneTerm+'”':'no saved lane found in the title'},
-   {key:'eligibility',points:eligibility,note:job.eligibility||'unverified'},
-   {key:'authorization',points:authorization,note:job.authorization||'unverified'},
-   {key:'connection',points:POINTS[tier.tier],note:tier.contact?.name||null},
-   {key:'freshness',points:fresh.points,note:fresh.basis==='none'?null:fresh.band},
-   {key:'portfolio',points:folio.points,note:folio.project},
-   {key:'location',points:location,note:location?'your locations':null}
-  ],
+  terms,
   reason:closed?'Listing closed — no longer accepting applications':gate.state==='excluded'?gate.why:gate.state==='held'?gate.why:roleFit<ROLE_FLOOR?'Below '+ROLE_FLOOR+'/'+WEIGHTS.role+' role-fit floor':!promoted?'Below priority threshold':'Qualified',
-  lines:['+'+roleFit+' role · '+(direct?'matches your saved lane “'+role.lane+'”'
-    :partial?'shares “'+role.laneTerm+'” with your saved lane “'+role.lane+'” — not the lane itself'
-    :'no saved lane found in this title — not a judgment about the role'),
-    '+'+eligibility+' eligibility · '+(job.eligibility||'not verified'),
-    '+'+authorization+' work authorization · '+(job.authorization||'not verified'),
-    '+'+POINTS[tier.tier]+' connection · '+tier.reason,
-    '+'+fresh.points+' freshness · '+fresh.line,
-    '+'+folio.points+' portfolio · '+folio.why,
-    '+'+location+' location · '+(location?'matches a location you listed':'not matched to your locations')]};
+  // One array, two renderings: the chips and the evidence lines cannot disagree
+  // about what a term claimed, and neither can the withheld count.
+  lines:termLines(terms)};
 }
 // PRD §7.1's caps, in one place: the panel used to print "/ 3" as a literal
 // beside a list this module sliced, which is invariant (13)'s least-derived

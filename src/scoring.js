@@ -1,5 +1,5 @@
 // PRD section 9: scores prioritize conversations; never predict hiring odds.
-import {jobStage,gateState,descriptionCoverage,REPLY_STEPS,OUTCOME_STAGES} from './model.js';
+import {jobStage,gateState,descriptionCoverage,companyMatch,REPLY_STEPS,OUTCOME_STAGES} from './model.js';
 import {freshnessScore,describeAge,recencyOf,isFresh} from './freshness.js';
 // Weight table decided 2026-11-03: the 2027-agent spec's terms and priorities,
 // with a connection term kept rather than dropped to 0. Authorization rises from
@@ -89,12 +89,25 @@ export function latestAnswer(contactId,events){
  return replies.length?replies.reduce((a,b)=>new Date(a.at)>=new Date(b.at)?a:b):null;
 }
 export function tierFor(company,people,events,now=new Date()){
- const matches=people.filter(p=>{
+ // Invariant (28): the join runs through companyMatch and nowhere else, and a
+ // relation it cannot settle is held out of the tier rather than scored as
+ // nobody being there. `unresolved` is the near-miss Hoshi holds and used to
+ // hide: "Nobody found at this company" over a saved contact one comma away.
+ const eligible=people.filter(p=>{
   if(!p.name||!p.origin)return false;
   if(p.origin==='user-imported CareerLink CSV'&&!['Verified current','Changed employer','Verified public profile'].includes(p.employerCheck))return false;
-  return lower(p.currentEmployer||p.company)===lower(company);
+  return true;
  });
- let best={tier:'C0',basis:null,contact:null,reason:'Nobody found at this company'};
+ const rel=p=>companyMatch(company,p.currentEmployer||p.company);
+ const matches=eligible.filter(p=>rel(p).match);
+ const unresolved=eligible.filter(p=>rel(p).relation==='unresolved')
+  .map(p=>({name:p.name,employer:String(p.currentEmployer||p.company||'').trim()}));
+ let best={tier:'C0',basis:null,contact:null,unresolved,
+  reason:unresolved.length
+   // Hoshi names its OWN failure — two strings it could not match — never a
+   // judgment about her list (§9.4 invariant 27's line on whose gap it is).
+   ?'no name matched “'+String(company).trim()+'” · '+unresolved[0].name+' is at “'+unresolved[0].employer+'”, which Hoshi cannot tell is the same employer'
+   :'Nobody found at this company'};
  for(const p of matches){
   const clock=decayClock(p.id,events,now);
   const answer=latestAnswer(p.id,events);
@@ -122,7 +135,11 @@ export function tierFor(company,people,events,now=new Date()){
    :basis==='declined'?'answered and could not help, '+shortDate(answer.at)
    :basis==='spent'?'no reply since '+shortDate(clock.first.at)+', '+clock.messages+(clock.messages===1?' send':' sends')
    :'from your alumni list, not saved · employer last confirmed '+shortDate(p.employerAsOf);
-  if(POINTS[tier]>POINTS[best.tier])best={tier,basis,contact:p,reason:p.name+' · '+(p.sharedContext||p.origin)+' · '+why};
+  // A tier won on a normalised match says so and prints both strings, because
+  // normalisation can over-match as well as under-match and this is the only
+  // surface where she could catch it (invariant 18's move, one term over).
+  const matched=rel(p).relation==='normalised'?' · matched “'+String(company).trim()+'” to your “'+String(p.currentEmployer||p.company).trim()+'”':'';
+  if(POINTS[tier]>POINTS[best.tier])best={tier,basis,contact:p,unresolved,reason:p.name+' · '+(p.sharedContext||p.origin)+' · '+why+matched};
  }
  return best;
 }
@@ -280,9 +297,15 @@ function evidencedTerms({role,roleFit,job,eligibility,authorization,tier,people,
    !UNCHECKED.authorization.includes(job.authorization),'sponsorship policy not checked'),
   // C0's line reads "nobody found at this company", which is false of a user
   // who has entered nobody anywhere — B-10's empty list is a no-claim state.
+  // Invariant (28) on top of invariant (27): a C0 is three claims and not one.
+  // She has nobody saved anywhere; or Hoshi holds a name it could not match to
+  // this company; or the comparison ran against every saved name and nobody is
+  // there. Only the third is a zero — the first two are withheld, and the
+  // second names the two strings rather than the conclusion.
   t('connection',POINTS[tier.tier],tier.contact?.name||null,
-   people.length||tier.tier!=='C0'?tier.reason:'no people saved yet, so no company was matched',
-   tier.tier==='C0'&&!people.length,'no people saved'),
+   tier.tier!=='C0'||people.length?tier.reason:'no people saved yet, so no company was matched',
+   tier.tier==='C0'&&(!people.length||!!tier.unresolved?.length),
+   people.length?tier.unresolved.length+' saved name'+(tier.unresolved.length===1?'':'s')+' Hoshi could not match to this company':'no people saved'),
   t('freshness',fresh.points,fresh.basis==='none'?null:fresh.band,fresh.line,
    fresh.basis==='none','no posting date'),
   t('portfolio',folio.points,folio.project,folio.why,
@@ -393,7 +416,11 @@ export function conversationBrief(state,now=new Date()){
   // last three days the claim is alive, measured on the earliest unanswered thread.
   else if(!clock.replied&&clock.first&&clock.days>=DECAY_DAYS-COOLING_LEAD_DAYS&&!clock.spent){
    why='Connection cooling · no reply since '+shortDate(clock.first.at);priority=2;expires=true;}
-  else if(!lastSend&&state.jobs.some(j=>j.company===(p.currentEmployer||p.company)&&j.listingState!=='closed')){why='Role at their company';priority=3;}
+  // Invariant (28): this row took a CASE-SENSITIVE equality while the tier took
+  // a case-folded one, so a contact could score C2 at a company and raise no
+  // row for an open role there — the brief and the score disagreeing about
+  // whether she knows anyone. One join, one answer.
+  else if(!lastSend&&state.jobs.some(j=>companyMatch(j.company,p.currentEmployer||p.company).match&&j.listingState!=='closed')){why='Role at their company';priority=3;}
   if(why&&p.name&&p.origin)items.push({contact:p,why,priority,expires});
  }
  // Expiring first at equal priority, so the tiebreak never costs a claim either.
@@ -442,7 +469,7 @@ export function freshJobs(state,now=new Date()){
   recency:recencyOf(job,now),
   age:describeAge(job,now),
   fresh:isFresh(job,now),
-  contacts:(state.people||[]).filter(p=>lower(p.currentEmployer||p.company)===lower(job.company)).length,
+  contacts:(state.people||[]).filter(p=>companyMatch(job.company,p.currentEmployer||p.company).match).length,
   applied:(state.events||[]).some(e=>e.kind==='submission'&&e.jobId===job.id)
  }));
  const bands={hour:[],sixHours:[],day:[],older:[],unverified:[]};

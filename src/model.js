@@ -100,11 +100,65 @@ export function safeProfile(updates){
  if(result.graduationYear!==undefined)result.graduationYear=cleanText(result.graduationYear,4);
  return result;
 }
+/**
+ * PRD §9.2 invariant (28), added 2026-11-25. The company join, in one place.
+ *
+ * The connection term, §8.1's watchlist, §7.3's "role at their company" row,
+ * the contacts count and §8.5's third dedup key all ask one question — is this
+ * posting at a company where she knows someone — and every one of them asked it
+ * with its own string comparison. Three different rules were in the code: a
+ * case-folded equality in `tierFor`, a CASE-SENSITIVE one in the brief row, and
+ * a whitespace-collapsing one in the dedup key. And neither side of the compare
+ * is constrained: a person's employer is typed by her or imported from a sheet,
+ * while a job's company is either the label she gave the board or the posting's
+ * own `hiringOrganization.name`, so the same employer arrives spelled two ways
+ * by design. A comma cost a whole tier.
+ *
+ * The normalisation is SYNTACTIC and stops there: case, punctuation, whitespace
+ * and a closed list of legal forms taken off the tail. Hoshi never maps one
+ * name to another — Alphabet is not Google here, and a parent is not its
+ * subsidiary — because that is a corporate-structure claim, and §9.1 carries
+ * the publisher of the one public dataset saying in writing that a name is not
+ * an employer. At least one token always survives, so a name made only of legal
+ * forms still has a key rather than becoming the empty string that matches
+ * everything.
+ */
+export const LEGAL_FORMS=Object.freeze(['inc','incorporated','llc','ltd','limited',
+ 'corp','corporation','co','company','plc','gmbh','ag','sa','sas','srl','bv','nv','ab','oy','pty','llp','lp']);
+export function companyKey(name){
+ const words=String(name||'').toLowerCase().replace(/[^a-z0-9&+]+/g,' ').trim().split(/\s+/).filter(Boolean);
+ while(words.length>1&&LEGAL_FORMS.includes(words[words.length-1]))words.pop();
+ return words.join(' ');
+}
+/**
+ * A miss is not an observation of absence (§8.8's rule, now in a join). Four
+ * relations, and only `exact` and `normalised` are a match:
+ *  - `incomparable` — one side has no company at all, so nothing was compared.
+ *  - `unresolved`   — one key's tokens are a PREFIX of the other's ("stripe"
+ *    against "stripe technologies"). Hoshi cannot tell whether that is one
+ *    employer, so it awards nothing and names the pair for her to settle.
+ *  - `different`    — the keys share no leading run of tokens. This is the only
+ *    relation that supports "nobody is there".
+ * `[assumption]` the prefix test. A wider one — any shared first token — would
+ * flag American Airlines against American Express, and a louder false alarm on
+ * the one surface she reads is worse than a quieter miss she can still fix by
+ * editing either name.
+ */
+export function companyMatch(a,b){
+ const x=companyKey(a),y=companyKey(b);
+ if(!x||!y)return {match:false,relation:'incomparable'};
+ if(x===y)return {match:true,relation:String(a).trim()===String(b).trim()?'exact':'normalised'};
+ const xs=x.split(' '),ys=y.split(' '),short=xs.length<=ys.length?xs:ys,long=xs.length<=ys.length?ys:xs;
+ return {match:false,relation:short.every((w,i)=>w===long[i])?'unresolved':'different'};
+}
 export function jobIdentity(job){
  const url=String(job.applyUrl||'').split(/[?#]/)[0].replace(/\/$/,'').toLowerCase();
  if(url)return 'url:'+url;
  if(job.provider&&job.providerJobId)return job.provider+':'+job.providerJobId;
- return 'name:'+String(job.company+'|'+job.title+'|'+job.location).toLowerCase().replace(/\s+/g,' ').trim();
+ // Key 3 takes the same key as every other consumer of the company join, so a
+ // posting met at a board and met on its own page is not two records over a
+ // legal suffix (invariant 28).
+ return 'name:'+[companyKey(job.company),job.title,job.location].join('|').toLowerCase().replace(/\s+/g,' ').trim();
 }
 export function mergeJob(existing,next){
  if(!existing)return {...next,id:next.id||asId(),createdAt:new Date().toISOString(),

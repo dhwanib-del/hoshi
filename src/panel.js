@@ -1,5 +1,5 @@
 import {morningBrief,scoreJob,activity,freshJobs,coverage,BRIEF_CAPS,evidenceSplit} from './scoring.js';
-import {stardust,jobStage,cleanText,listingStatus} from './model.js';
+import {stardust,jobStage,cleanText,listingStatus,companyMatch} from './model.js';
 import {describeAge,recencyOf,UNVERIFIED_LABEL} from './freshness.js';
 import {parseBoardUrl,PROVIDERS} from './discovery.js';
 import {sponsorshipNote} from './sponsorship.js';
@@ -142,7 +142,8 @@ function rowFor(job,score){
  const now=new Date();
  return {job,score:score||scoreJob(job,state.profile,state.people,state.events,now),
   recency:recencyOf(job,now),age:describeAge(job,now),
-  contacts:state.people.filter(p=>String(p.currentEmployer||p.company||'').toLowerCase()===String(job.company||'').toLowerCase()).length,
+  // Invariant (28): the fifth copy of the company join, now the one key.
+  contacts:state.people.filter(p=>companyMatch(job.company,p.currentEmployer||p.company).match).length,
   applied:state.events.some(e=>e.kind==='submission'&&e.jobId===job.id)};
 }
 function jobCard(job,score){return freshCard(rowFor(job,score),{listing:true});}

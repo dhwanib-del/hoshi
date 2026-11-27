@@ -66,12 +66,12 @@ async function handle(message){
    const job=s.jobs.find(x=>x.id===data.jobId);
    if(!job)throw Error('Job not found');
    const score=scoreJob(job,s.profile,s.people,s.events);
-   // PRD §10.5: a `source:'hoshi'` row carries the score as at submit. Invariant
-   // (12) means a held job never had one — so marking it applied writes B-21's
-   // `source:'user'` arm instead of inventing a score after the event (rule 8).
-   return score.rankable
-    ? mayMarkApplied(s,data.jobId,{confirm:data.confirm===true,source:'hoshi',score})
-    : mayMarkApplied(s,data.jobId,{confirm:data.confirm===true,source:'user'});
+   // PRD §10.5 invariant (29): the arm is COVERAGE, so a fill flow inside Hoshi
+   // writes Hoshi's arm whether or not invariant (12) let the job carry a score
+   // — the held row says which check was unestablished instead. `source:'user'`
+   // is only ever a row she asserts about an application Hoshi did not fill, and
+   // its writer is the entry form B-21 specified and B-10 owes.
+   return mayMarkApplied(s,data.jobId,{confirm:data.confirm===true,source:'hoshi',score});
   });
   case 'OUTCOME':return mutator(s=>markOutcome(s,data.jobId,data.stage));
   case 'SENT':return mutator(s=>{

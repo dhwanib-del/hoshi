@@ -206,7 +206,11 @@ function activityView(){
   (r.attribution?'<p class="micro muted"><strong>A difference, not an effect.</strong> '+esc(r.attribution)+'</p>':'')+
   (r.excluded?'<p class="micro muted">'+esc(r.excluded)+'</p>':'')+
   '<p class="micro muted">'+esc(r.note)+'</p></div>').join('')+
- '<div class="card" style="margin-top:10px"><strong>'+(a.immature.hoshi+a.immature.user)+' applications too recent</strong><p class="micro muted">'+a.immature.hoshi+' of Hoshi\'s rows and '+a.immature.user+' of yours are younger than 21 days and stay out of the response-rate denominators. Missing replies and unconfirmed external submissions are not observed.'+(a.weightTables.length>1?' Hoshi\'s rows span '+a.weightTables.length+' weight tables and are not segmented by table.':'')+'</p></div>'+
+ '<div class="card" style="margin-top:10px"><strong>'+(a.immature.hoshi+a.immature.user)+' applications too recent</strong><p class="micro muted">'+a.immature.hoshi+' of Hoshi\'s rows and '+a.immature.user+' of yours are younger than 21 days and stay out of the response-rate denominators. Missing replies and unconfirmed external submissions are not observed.'+(a.weightTables.length>1?' Hoshi\'s rows span '+a.weightTables.length+' weight tables and are not segmented by table.':'')+
+  // Invariant (29): a held row carries no score, so it names no weight table.
+  // The span drops it; this line says how many and which check was missing,
+  // rather than leaving the shortfall as a silence (rule 6's shape).
+  (a.heldRows?' '+a.heldRows+' of Hoshi\'s rows carry no score — the job was held when you applied'+(a.heldChecks.length?' ('+a.heldChecks.map(esc).join(', ')+')':'')+', so they name no weight table. They are in every rate above and in the tier table.':'')+'</p></div>'+
  sec('Your record','Append-only history')+
  (state.events.length?'<div class="stack">'+state.events.slice(-20).reverse().map(e=>'<div class="card"><strong>'+esc(e.kind)+'</strong><div class="micro muted">'+date(e.at)+' · '+esc(e.stage||e.step||'Recorded by you')+'</div></div>').join('')+'</div>':empty('◉','No recorded events','Mark a message sent, or mark an application after you submit it yourself.'));
 }

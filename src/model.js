@@ -285,21 +285,35 @@ export function mayMarkApplied(state,jobId,{confirm=false,source='hoshi',score=n
  if(source==='user')return appendEvent(state,{kind:'submission',source:'user',jobId,
   at:at||new Date().toISOString(),recordedAt:new Date().toISOString(),
   personAttached:contactId?{contactId}:null});
- if(!score||score.total==null)throw Error('A Hoshi-scored submission needs the score as at submit');
- // Invariant (14): no version literal lives here. The score carries the table
- // that produced it, and a score that cannot name one is REFUSED rather than
- // stamped with a guess — fail closed (Principle 5) on an append-only store,
- // where a row written wrong can never be taken back.
- if(!score.weightsVersion)throw Error('A Hoshi-scored submission needs the weight table that produced the score');
+ if(!score)throw Error('A Hoshi submission needs the score object as at submit');
  // Invariant (23), PRD §9.2: C1 is two constructions, so a C1 row without the
  // one that produced it is permanently un-segmentable in an append-only store —
  // the same reason invariant (14) refuses a row whose score names no weight
  // table. Refused rather than stamped with whichever construction looks likely.
  if(score.tier==='C1'&&!score.tierBasis)throw Error('A C1 submission needs the construction that produced the tier');
+ // The tier is derived from the log and is nameable whatever the gates say, so
+ // it rides both Hoshi arms: a held application she submitted is still an
+ // application with a person attached to it (PRD §5.2).
+ const personAttached=score.tier!=='C0'&&score.contact?{contactId:score.contact.id,tier:score.tier,
+  ...(score.tier==='C1'?{tierBasis:score.tierBasis}:{})}:null;
+ // Invariant (29), PRD §10.5: `source` is COVERAGE — who filled the application
+ // — never whether a score existed. Invariant (12) holds an unverified gate out
+ // of the ranking, so a job Hoshi filled can have no score to copy in, and with
+ // no source for the sponsorship gate (invariant 26) that is every job. Writing
+ // her arm for it put Hoshi's own rows under "applications you entered
+ // yourself", unattached the person, and emptied the by-tier table.
+ if(score.total==null){
+  if(!score.missingChecks?.length)throw Error('A Hoshi row with no score must name the checks that were unestablished (invariant 29)');
+  return appendEvent(state,{kind:'submission',source:'hoshi',jobId,
+   heldFor:Object.freeze([...score.missingChecks]),personAttached});
+ }
+ // Invariant (14): no version literal lives here. The score carries the table
+ // that produced it, and a score that cannot name one is REFUSED rather than
+ // stamped with a guess — fail closed (Principle 5) on an append-only store,
+ // where a row written wrong can never be taken back.
+ if(!score.weightsVersion)throw Error('A Hoshi-scored submission needs the weight table that produced the score');
  return appendEvent(state,{kind:'submission',source:'hoshi',jobId,
-  roleFit:score.roleFit,totalScore:score.total,weightsVersion:score.weightsVersion,
-  personAttached:score.tier!=='C0'&&score.contact?{contactId:score.contact.id,tier:score.tier,
-   ...(score.tier==='C1'?{tierBasis:score.tierBasis}:{})}:null});
+  roleFit:score.roleFit,totalScore:score.total,weightsVersion:score.weightsVersion,personAttached});
 }
 // PRD §10.3 rule 12, added 2026-11-20. The enum had no single definition: this
 // write site held one copy and Activity's numerator held another, as an

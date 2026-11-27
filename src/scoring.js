@@ -622,7 +622,7 @@ export function byTier(rows,hit,skew,numerator){
   pooled:null,comparison:null,numerator:numerator.label,numeratorExclusion:numerator.exclusion,
   excluded:unbased?unbased+(unbased===1?' C1 row carries':' C1 rows carry')+' no construction and '+(unbased===1?'is':'are')+' in neither C1 arm — written before Hoshi distinguished the two, and an append-only row cannot be reclassified.':null,
   attribution:'You chose which applications carried a person, so a gap between these tiers is a difference and never the effect of the connection. Only a cohort could separate the two (§10.4).',
-  note:'Hoshi’s rows only — your own entries carry no tier (invariant 9). C1 is two arms, because an alum you never wrote to and a thread that went unanswered are not the same evidence.',
+  note:'Hoshi’s rows only — your own entries carry no tier (invariant 9), while a row for a job that was held carries one and no score (invariant 29). C1 is two arms, because an alum you never wrote to and a thread that went unanswered are not the same evidence.',
   segments:TIER_ARMS.map(a=>populationRate(tierPopulation(a),rows,hit,skew))};
 }
 // PRD §10.3 rule 11, amended 2026-11-06. Segmentation by `source` binds exactly
@@ -654,7 +654,13 @@ export function activity(state,now=new Date()){
  // which is the fact a reader needs. Pooling two scales widens a number; it
  // does not leave the direction unknown, which is why rule 11's harder fallback
  // is for `source` and not for this.
- const tables=[...new Set(sub.filter(x=>x.source==='hoshi').map(x=>x.weightsVersion).filter(Boolean))];
+ const hoshiRows=sub.filter(x=>x.source==='hoshi');
+ const tables=[...new Set(hoshiRows.map(x=>x.weightsVersion).filter(Boolean))];
+ // Invariant (29): a held row has no score to name a table with, so the span is
+ // over scored rows and the rest are STATED as a number rather than dropped by
+ // a `.filter(Boolean)` nobody reads (rule 6's shape). They are in every other
+ // Hoshi rate and in the by-tier set, because they carry a tier.
+ const held=hoshiRows.filter(x=>x.totalScore==null);
  return {counts:{submissions:sub.length,withPerson:sub.filter(x=>x.personAttached?.contactId).length,
    outreach:out.length,replies:replies.length,interviews:e.filter(x=>x.kind==='outcome'&&x.stage==='interview').length},
   rates:[
@@ -682,5 +688,6 @@ export function activity(state,now=new Date()){
      'Upper bound: the denominator is the sends you remembered to mark.')]}],
   immature:{hoshi:sub.filter(x=>x.source==='hoshi'&&!matured(x)).length,
    user:sub.filter(x=>x.source==='user'&&!matured(x)).length},
-  weightTables:tables,stageFor:id=>jobStage(e,id)};
+  weightTables:tables,heldRows:held.length,
+  heldChecks:[...new Set(held.flatMap(x=>x.heldFor||[]))],stageFor:id=>jobStage(e,id)};
 }

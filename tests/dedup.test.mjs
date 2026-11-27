@@ -67,7 +67,12 @@ test('timestamps never let a weaker date overwrite a real publication date',()=>
  assert.equal(mergeTimestamps(null,{publishedAt:'nonsense'}).publishedAt,undefined);
 });
 
-test('a held job marked applied records the user arm, not a Hoshi score',()=>{
+// Renamed 2026-11-27 by invariant (29): this read "a held job marked applied
+// records the user arm", which is the defect that invariant now forbids — a
+// held job Hoshi filled is Hoshi's row (tests/arms.test.mjs). What it actually
+// asserts is unchanged and still true: a row SHE enters carries no Hoshi field,
+// and a Hoshi row with no score object at all is refused rather than written empty.
+test('a row she enters carries no Hoshi score, and a Hoshi row with no score is refused',()=>{
  let s={...stateFrom()};
  s=addJob(s,{title:'Product Designer',company:'Example',eligibility:'eligible',authorization:'unverified'});
  assert.equal(gateState(s.jobs[0]).state,'held');
@@ -78,5 +83,5 @@ test('a held job marked applied records the user arm, not a Hoshi score',()=>{
  assert.equal(row.weightsVersion,undefined);
  assert.ok(row.recordedAt,'a user row carries recordedAt beside at');
  assert.throws(()=>mayMarkApplied({...stateFrom(),jobs:[{id:'x',title:'t',company:'c'}]},'x',{confirm:true,source:'hoshi'}),
-  /score as at submit/,'a hoshi row without a score is refused rather than written empty');
+  /score object as at submit/,'a hoshi row without a score is refused rather than written empty');
 });

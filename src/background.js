@@ -1,4 +1,4 @@
-import {KEY,DEFAULTS,stateFrom,asId,addJob,appendEvent,mayMarkApplied,markOutcome,saveAnswer,safeProfile,usableAnswer} from './model.js';
+import {KEY,DEFAULTS,PROTECTED,DESCRIPTION_CAP,stateFrom,asId,addJob,appendEvent,mayMarkApplied,markOutcome,saveAnswer,safeProfile,usableAnswer} from './model.js';
 import {listJobs,applyBoardResult} from './discovery.js';
 import {captureCurrentPage} from './capture.js';
 import {inspectFields,fillReviewed} from './autofill.js';
@@ -56,7 +56,7 @@ async function handle(message){
    const url=tab.url||'';
    if(!/^https:\/\/(job-boards\.greenhouse\.io|boards\.greenhouse\.io|jobs\.lever\.co|jobs\.ashbyhq\.com|[^/]*myworkdayjobs\.com|[^/]*smartrecruiters\.com|[^/]*icims\.com|[^/]*workable\.com|[^/]*jobvite\.com)\//.test(url))
     throw Error('Only supported ATS job pages may be captured.');
-   const rows=await chrome.scripting.executeScript({target:{tabId:tab.id},func:captureCurrentPage});
+   const rows=await chrome.scripting.executeScript({target:{tabId:tab.id},func:captureCurrentPage,args:[DESCRIPTION_CAP]});
    const job=rows[0]?.result;
    if(!job||job.error)throw Error(job?.error||'Job page could not be read. Grant site access using the Hoshi toolbar icon.');
    if(!job.company) return {needsCompany:true,captured:job};
@@ -65,7 +65,13 @@ async function handle(message){
   case 'MARK_SUBMITTED':return mutator(s=>{
    const job=s.jobs.find(x=>x.id===data.jobId);
    if(!job)throw Error('Job not found');
-   return mayMarkApplied(s,data.jobId,{confirm:data.confirm===true,source:'hoshi',score:scoreJob(job,s.profile,s.people,s.events)});
+   const score=scoreJob(job,s.profile,s.people,s.events);
+   // PRD §10.5 invariant (29): the arm is COVERAGE, so a fill flow inside Hoshi
+   // writes Hoshi's arm whether or not invariant (12) let the job carry a score
+   // — the held row says which check was unestablished instead. `source:'user'`
+   // is only ever a row she asserts about an application Hoshi did not fill, and
+   // its writer is the entry form B-21 specified and B-10 owes.
+   return mayMarkApplied(s,data.jobId,{confirm:data.confirm===true,source:'hoshi',score});
   });
   case 'OUTCOME':return mutator(s=>markOutcome(s,data.jobId,data.stage));
   case 'SENT':return mutator(s=>{
@@ -75,7 +81,10 @@ async function handle(message){
   case 'REPLY':return mutator(s=>{
    const message=[...s.events].reverse().find(e=>e.kind==='outreach'&&e.contactId===data.contactId);
    if(!message)throw Error('No outbound thread to attach this reply to');
-   return appendEvent(s,{kind:'reply',contactId:data.contactId,threadId:message.threadId,source:'user',step:data.step||'replied',arrived:data.arrivedAt?{kind:'stated',at:data.arrivedAt}:{kind:'unknown'}});
+   // No default step (invariant 24). `data.step || 'replied'` was the write-site
+   // half of the defect: a caller that did not say what came back got the word
+   // that scores the whole connection weight. appendEvent refuses it instead.
+   return appendEvent(s,{kind:'reply',contactId:data.contactId,threadId:message.threadId,source:'user',step:data.step,arrived:data.arrivedAt?{kind:'stated',at:data.arrivedAt}:{kind:'unknown'}});
   });
   case 'SAVE_ANSWER':return mutator(s=>saveAnswer(s,data));
   case 'IMPORT':return mutator(s=>{
@@ -106,7 +115,7 @@ async function handle(message){
    if(!job)throw Error('Save this job before reviewing form fields');
    const tab=await getCurrentTab();
    if(!job.applyUrl||new URL(job.applyUrl).origin!==new URL(tab.url).origin)throw Error('Open the saved job on the same employer site');
-   const [result]=await chrome.scripting.executeScript({target:{tabId:tab.id},func:inspectFields});
+   const [result]=await chrome.scripting.executeScript({target:{tabId:tab.id},func:inspectFields,args:[PROTECTED.source]});
    if(result?.result?.error)throw Error(result.result.error);
    const state=await load();
    const proposals=[];
@@ -131,7 +140,7 @@ async function handle(message){
     if(usable.fill&&p.approved===true)pairs.push({selector:p.selector,label:p.label,answer:usable.value,approved:true});
    }
    if(!pairs.length)return {filled:0,errors:['No eligible fields approved']};
-   const [filled]=await chrome.scripting.executeScript({target:{tabId:tab.id},func:fillReviewed,args:[pairs]});
+   const [filled]=await chrome.scripting.executeScript({target:{tabId:tab.id},func:fillReviewed,args:[pairs,PROTECTED.source]});
    return filled?.result||{filled:0,errors:['No result']};
   }
   case 'CLEAR_ALL':throw Error('Hoshi does not wipe your records from a single click');

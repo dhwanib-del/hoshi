@@ -105,7 +105,7 @@ test('invariant (25): an exclusion must name a value the numerator really drops'
 test('invariant (25): a rate set cannot be built without a numerator that names itself', () => {
   const rows = [{ ...sub('a'), personAttached: { contactId: 'c', tier: 'C3' } }];
   assert.throws(() => byTier(rows, () => true, 'skew'), /numerator that can name itself/);
-  assert.ok(byTier(rows, () => true, 'skew', NUMERATORS.advanced()).numerator);
+  assert.ok(byTier(rows, () => true, 'skew', NUMERATORS.advanced(), () => false).numerator);
 });
 
 test('rule 12: reply rate counts a decline on purpose, and says so', () => {

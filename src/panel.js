@@ -202,7 +202,11 @@ function activityView(){
   // population each segment names. A percentage is recheckable from `6 of 20`
   // and what counted as a hit is recheckable from nothing on the surface.
   (r.numerator?'<p class="micro muted">'+esc(r.numerator)+(r.numeratorExclusion?' Not counted: '+esc(r.numeratorExclusion)+'.':'')+'</p>':'')+
-  r.segments.map(s=>'<div class="rate"><strong>'+esc(s.summary)+'</strong><small>'+esc(s.label)+'. '+esc(s.skew)+'</small></div>').join('')+
+  // Invariant (30): where the numerator reads outcome rows, the segment says
+  // how many of its hits an inbox match surfaced rather than her own entry —
+  // two coverage regimes inside the top half of the fraction, and they move
+  // this rate and the advance rate in opposite directions.
+  r.segments.map(s=>'<div class="rate"><strong>'+esc(s.summary)+'</strong><small>'+esc(s.label)+'. '+esc(s.skew)+(s.byMatch?' '+s.byMatch+' of these arrived by an inbox match you approved, not from your own entry.':'')+'</small></div>').join('')+
   (r.attribution?'<p class="micro muted"><strong>A difference, not an effect.</strong> '+esc(r.attribution)+'</p>':'')+
   (r.excluded?'<p class="micro muted">'+esc(r.excluded)+'</p>':'')+
   '<p class="micro muted">'+esc(r.note)+'</p></div>').join('')+

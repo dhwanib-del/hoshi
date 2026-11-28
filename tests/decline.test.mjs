@@ -114,7 +114,7 @@ test('invariant 24: the declined arm is a population of its own, never pooled',(
  const row=(id,basis)=>({kind:'submission',source:'hoshi',jobId:id,at:ago(40),
   roleFit:20,totalScore:80,weightsVersion:WEIGHTS_VERSION,
   personAttached:{contactId:'c-'+id,tier:'C1',tierBasis:basis}});
- const set=byTier([row('a','alum'),row('b','spent'),row('c','declined')],x=>x.jobId==='c',' ',NUMERATORS.advanced());
+ const set=byTier([row('a','alum'),row('b','spent'),row('c','declined')],x=>x.jobId==='c',' ',NUMERATORS.advanced(),()=>false);
  const n=Object.fromEntries(set.segments.map(s=>[s.population,s.n]));
  assert.equal(n[tierPopulation('C1·declined').label],1);
  // Three constructions, three arms: an alum she never used, a thread that went

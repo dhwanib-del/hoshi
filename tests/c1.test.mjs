@@ -86,7 +86,7 @@ test('invariant 23: a tier-segmented rate does not pool the two constructions',(
   roleFit:20,totalScore:80,weightsVersion:WEIGHTS_VERSION,
   personAttached:{contactId:'c-'+id,tier,...(basis?{tierBasis:basis}:{})}});
  const set=byTier([row('a','C1','alum'),row('b','C1','spent'),row('c','C1','spent'),row('d','C1')],
-  x=>x.jobId==='b',' ',NUMERATORS.advanced());
+  x=>x.jobId==='b',' ',NUMERATORS.advanced(),()=>false);
  const n=Object.fromEntries(set.segments.map(s=>[s.population,s.n]));
  assert.equal(n['C1 applications Hoshi filled, where the person was an alum you had not saved'],1);
  assert.equal(n['C1 applications Hoshi filled, where you had messaged them and no reply came'],2);

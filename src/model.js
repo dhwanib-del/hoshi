@@ -321,10 +321,40 @@ export function mayMarkApplied(state,jobId,{confirm=false,source='hoshi',score=n
 // test, so it is derived from the enum rather than written beside it, and a
 // value the numerator does not count has to be NAMED (invariant 25).
 export const OUTCOME_STAGES=Object.freeze(['response','screen','interview','rejected']);
-export function markOutcome(state,jobId,stage){
+// PRD §10.5 invariant (30), added 2026-11-28. `outcome.source` is COVERAGE —
+// what put the row in front of her — and never whether the row is true, which
+// is invariant (29)'s correction on the sibling kind in the same schema. The
+// `import` arm has one writer (B-22's authorized read-only reconciliation), and
+// rule 12 makes every outcome row a numerator member, so a match that she has
+// not accepted is not a row at all: fail closed means writing nothing.
+export const OUTCOME_SOURCES=Object.freeze(['user','import']);
+export function markOutcome(state,jobId,stage,provenance={source:'user'}){
  if(!OUTCOME_STAGES.includes(stage))throw Error('Invalid outcome: '+OUTCOME_STAGES.join(' | '));
  if(!state.jobs.some(j=>j.id===jobId))throw Error('Job missing');
- return appendEvent(state,{kind:'outcome',jobId,stage,source:'user'});
+ const {source='user',messageId=null,acceptedAt=null}=provenance||{};
+ if(!OUTCOME_SOURCES.includes(source))throw Error('An outcome names who put it there: '+OUTCOME_SOURCES.join(' | '));
+ if(source==='user')return appendEvent(state,{kind:'outcome',jobId,stage,source});
+ // An imported row carries the match it rests on and the moment she accepted
+ // it, or the write is refused — provenance names the match and never the
+ // inference (Principle 6), and an unprovenanced import would be an inference
+ // wearing her assertion's provenance.
+ if(!messageId||!acceptedAt)
+  throw Error('An imported outcome carries the message it matched and when you accepted it (invariant 30)');
+ return appendEvent(state,{kind:'outcome',jobId,stage,source,messageId,acceptedAt});
+}
+// One suggestion per call. The approval is the whole guarantee that an imported
+// row is hers, so a bulk accept (the category's "Approve All") would hand the
+// guarantee back to the matcher — and the vendor's own warning names the case
+// it breaks on, several roles at one employer, which is §8.5's dedup problem
+// arriving in a mailbox. Hoshi never reads the stage out of the message either
+// (Principle 2, invariant 24 one funnel over): the match proposes the
+// application, she picks the stage.
+export function acceptOutcomeSuggestion(state,suggestion){
+ if(Array.isArray(suggestion))
+  throw Error('Suggestions are accepted one at a time — the approval is what makes the row yours (invariant 30)');
+ const {jobId,stage,messageId}=suggestion||{};
+ if(!jobId||!stage||!messageId)throw Error('A suggestion names a job, a stage you chose, and the message it matched');
+ return markOutcome(state,jobId,stage,{source:'import',messageId,acceptedAt:new Date().toISOString()});
 }
 export function jobStage(events,jobId){
  const e=[...events].reverse().find(x=>x.jobId===jobId&&x.kind==='outcome');

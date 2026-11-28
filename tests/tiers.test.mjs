@@ -43,7 +43,7 @@ test('invariant (9): a tier bucket never holds a row she entered herself', () =>
   const set = byTier([
     row('h1', 'C3'), row('h2', 'C0'),
     row('u1', 'C3', { source: 'user' }), row('u2', null, { source: 'user' })
-  ], () => false, 'skew', advanced());
+  ], () => false, 'skew', advanced(), () => false);
   const n = Object.fromEntries(set.segments.map(s => [s.label, s.n]));
   assert.equal(n['Of C3 applications Hoshi filled'], 1);
   assert.equal(n['Of C0 applications Hoshi filled'], 1);
@@ -59,11 +59,11 @@ test('invariant (15) at the tier grain: each label names the bucket its own filt
   for (const arm of TIER_ARMS) {
     const p = tierPopulation(arm);
     assert.ok(p.label.startsWith(arm.split('·')[0] + ' applications Hoshi filled'));
-    const seg = byTier(rows, () => false, 'skew', advanced()).segments.find(s => s.label === 'Of ' + p.label);
+    const seg = byTier(rows, () => false, 'skew', advanced(), () => false).segments.find(s => s.label === 'Of ' + p.label);
     assert.equal(seg.n, rows.filter(p.of).length);
   }
   assert.ok(TIERS.includes('C1'), 'C1 is still a tier value even though it is not a population');
-  assert.match(byTier(rows, () => false, 'skew', advanced()).excluded, /1 C1 row carries/);
+  assert.match(byTier(rows, () => false, 'skew', advanced(), () => false).excluded, /1 C1 row carries/);
 });
 
 test('invariant (20): disjoint intervals still license no attribution', () => {
@@ -74,7 +74,7 @@ test('invariant (20): disjoint intervals still license no attribution', () => {
   for (let i = 0; i < 150; i++) rows.push(row('c0-' + i, 'C0'));
   const hits = new Set([...Array(8).keys()].map(i => 'c3-' + i)
     .concat([...Array(4).keys()].map(i => 'c0-' + i)));
-  const set = byTier(rows, x => hits.has(x.jobId), 'skew', advanced());
+  const set = byTier(rows, x => hits.has(x.jobId), 'skew', advanced(), () => false);
   const c3 = set.segments.find(s => s.label.startsWith('Of C3'));
   const c0 = set.segments.find(s => s.label.startsWith('Of C0'));
   assert.ok(c3.visible && c0.visible, 'both arms clear rule 1’s floor at this volume');
@@ -88,7 +88,7 @@ test('invariant (20): disjoint intervals still license no attribution', () => {
 
 test('rule 1 is what binds a tier arm, and its fallback is a fraction', () => {
   const rows = [row('x', 'C3'), row('y', 'C3'), row('z', 'C3')];
-  const c3 = byTier(rows, () => true, 'skew', advanced()).segments.find(s => s.label.startsWith('Of C3'));
+  const c3 = byTier(rows, () => true, 'skew', advanced(), () => false).segments.find(s => s.label.startsWith('Of C3'));
   assert.equal(c3.visible, false);
   assert.match(c3.summary, /3 of 3/);
   assert.match(c3.summary, /7 more/);
